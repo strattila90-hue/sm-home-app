@@ -78,7 +78,7 @@ window.addEventListener("pagehide", persist);
 function resetStore() { store.recs = {}; store.dirty = {}; store.lastSync = null; ver++; persist(); }
 
 let ui = { tab: "home", month: ymOf(TODAY), day: TODAY, year: +TODAY.slice(0, 4), rep: { year: +TODAY.slice(0, 4), kind: "q", n: Math.floor((+TODAY.slice(5, 7) - 1) / 3) + 1 }, auth: "login", recovery: false };
-try { const u = JSON.parse(localStorage.getItem(LS_UI) || "null"); if (u && ["home", "log", "exp", "nav", "biz", "set"].includes(u.tab)) ui.tab = u.tab; } catch (e) {}
+try { const u = JSON.parse(localStorage.getItem(LS_UI) || "null"); if (u && ["home", "log", "exp", "stock", "nav", "biz", "set"].includes(u.tab)) ui.tab = u.tab; } catch (e) {}
 function saveUi() { try { localStorage.setItem(LS_UI, JSON.stringify({ tab: ui.tab })); } catch (e) {} }
 
 function setRec(id, kind, data, opts) {
@@ -192,16 +192,16 @@ setInterval(() => { if (document.visibilityState === "visible") pull(); }, 60000
 let dv = -1, D = null;
 function data() {
   if (dv === ver && D) return D;
-  const orders = {}, expenses = {}, docs = {}; let settings = null, biz = null;
+  const orders = {}, expenses = {}, docs = {}, stock = {}; let settings = null, biz = null;
   for (const [id, r] of Object.entries(store.recs)) {
     if (!r || r.deleted) continue;
     if (r.kind === "order") orders[id] = normOrder(r.data);
     else if (r.kind === "expense") expenses[id] = r.data;
     else if (r.kind === "doc") docs[id] = r.data;
-    else if (r.kind === "settings") settings = r.data;
+    else if (r.kind === "settings") { if (id.startsWith("stk-")) stock[id] = r.data; else settings = r.data; }
     else if (r.kind === "business") biz = r.data;
   }
-  D = { orders, expenses, docs, settings: mergeDef(settings), biz: Object.assign(clone(BIZ_DEF), biz || {}) };
+  D = { orders, expenses, docs, stock, settings: mergeDef(settings), biz: Object.assign(clone(BIZ_DEF), biz || {}) };
   dv = ver; return D;
 }
 const listOrders = (pre) => Object.entries(data().orders).filter(([, o]) => String(o.date || "").startsWith(pre)).map(([id, o]) => Object.assign({ id }, o));
@@ -225,10 +225,12 @@ const I = {
   exp: sv('<path d="M6 3h12v18l-3-2-3 2-3-2-3 2z"/><path d="M9 8h6M9 12h6"/>'),
   nav: sv('<path d="M7 3h7l5 5v13H7z"/><path d="M14 3v5h5M10 13h6M10 17h6"/>'),
   biz: sv('<path d="M4 9h16v11H4z"/><path d="M9 9V5h6v4M4 14h16"/>'),
+  stock: sv('<path d="M4 8l8-4 8 4v8l-8 4-8-4z"/><path d="M4 8l8 4 8-4M12 12v8"/>'),
+  minus: sv('<path d="M6 12h12"/>', 2.2), plus: sv('<path d="M12 6v12M6 12h12"/>', 2.2),
   x: '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>',
   file: sv('<path d="M7 3h7l5 5v13H7z"/><path d="M14 3v5h5"/>')
 };
-const TABS = [["home", "Áttekintés"], ["log", "Napló"], ["exp", "Kiadások"], ["nav", "NAV"], ["biz", "Vállalkozás"]];
+const TABS = [["home", "Főoldal"], ["log", "Napló"], ["exp", "Kiadás"], ["stock", "Készlet"], ["nav", "NAV"], ["biz", "Cég"]];
 
 /* ---------- Állapotjelző ---------- */
 function paintStatus() {
@@ -258,14 +260,14 @@ function render(force) {
   document.getElementById("tabsNav").hidden = needAuth || loading;
   document.getElementById("gear").hidden = needAuth || loading;
   const fab = document.getElementById("fab");
-  fab.hidden = needAuth || loading || !["home", "log", "exp"].includes(ui.tab);
-  fab.setAttribute("aria-label", ui.tab === "exp" ? "Új kiadás" : "Új rendelés");
+  fab.hidden = needAuth || loading || !["home", "log", "exp", "stock"].includes(ui.tab);
+  fab.setAttribute("aria-label", ui.tab === "exp" ? "Új kiadás" : ui.tab === "stock" ? "Új készlettétel" : "Új rendelés");
   if (loading) { main.innerHTML = '<div class="card empty"><h3>Betöltés…</h3><p>Egy pillanat, előkészítem a naplót.</p></div>'; return; }
   if (needAuth) { main.innerHTML = vAuth(); return; }
   document.getElementById("tabs").innerHTML = TABS.map(([k, l]) => `<button type="button" data-action="tab" data-t="${k}" ${ui.tab === k ? 'aria-current="page"' : ""}>${I[k]}<span>${l}</span></button>`).join("");
   const y = window.scrollY;
   if (CLOUD && !sync.firstDone && !hasAny() && online() && sb) { main.innerHTML = '<div class="card empty"><h3>Adatok letöltése…</h3><p>Szinkronizálom a felhőből a rendeléseket és kiadásokat.</p></div>'; return; }
-  main.innerHTML = ({ home: vHome, log: vLog, exp: vExp, nav: vNav, biz: vBiz, set: vSet }[ui.tab])();
+  main.innerHTML = ({ home: vHome, log: vLog, exp: vExp, stock: vStock, nav: vNav, biz: vBiz, set: vSet }[ui.tab])();
   window.scrollTo(0, y);
   loadThumbs();
   if (ui.tab === "set") drawQr();
@@ -347,6 +349,8 @@ function vHome() {
   </div>
   ${num(s.taxPct) > 0 ? `<div class="card"><div class="rows"><div class="row"><span>Adó- és járuléktartalék (${num(s.taxPct)}%)</span><b class="num">${huf(m.tax)}</b></div><div class="row"><span>Ami ténylegesen marad</span><b class="num">${huf(m.net)}</b></div></div></div>` : ""}`;
   const today = stats(TODAY), open = Object.values(data().orders).filter((o) => o.status !== "Teljesítve").length, att = attention();
+  const low = lowStock();
+  if (low.length) h += `<div class="card"><div class="section-title">Fogyóban lévő készlet</div><div class="btns">${low.slice(0, 6).map((x) => `<span class="pill st-late">${esc(x.name)}: ${fmtQty(x.qty)} ${esc(x.unit)}</span>`).join("")}<button type="button" class="btn small" data-action="tab" data-t="stock">Készlet</button></div></div>`;
   if (att.list.length) h += `<div class="card"><div class="section-title">Figyelmet igényel</div><div class="btns">${att.late ? `<span class="pill st-late">${att.late} lemaradt</span>` : ""}${att.unpaid.length ? `<span class="pill st-unpaid">${att.unpaid.length} nem fizetett · ${huf(att.unpaidSum)}</span>` : ""}<button type="button" class="btn small" data-action="tab" data-t="log">Megnézem</button></div></div>`;
   h += `<div class="card"><div class="section-title">Ma · ${esc(dayLabel(TODAY))}, ${esc(weekday(TODAY))}</div>
    <div class="row" style="border:0;padding:0"><div class="l"><b class="num">${today.n} rendelés</b><div class="t num">${huf(today.rev)} bevétel · ${hrs(today.h)} munka${open ? ` · ${open} nyitott rendelés összesen` : ""}</div></div>
@@ -390,10 +394,10 @@ function chart(ms) {
 const photoImg = (ph, cls, extra) => !ph ? "" : ph.dataUrl ? `<img class="${cls}" src="${ph.dataUrl}" alt="" ${extra || ""}>` : `<img class="${cls}" data-thumb="${esc(ph.path)}" alt="" ${extra || ""}>`;
 function orderCard(o) {
   const p = num(o.price) - num(o.cost), st = orderState(o);
-  return `<button type="button" class="order st-${st}" data-action="editOrder" data-id="${esc(o.id)}">
+  return `<div class="order-wrap"><button type="button" class="order st-${st}" data-action="editOrder" data-id="${esc(o.id)}">
    <span class="oname">${photoImg(o.photo, "othumb")}<span class="name">${esc(o.product || o.type || "Rendelés")}</span></span><span class="price num">${huf(o.price)}</span>
    <span class="meta"><span class="pill st-${st}">${esc(STATE[st].label)}</span>${o.type ? `<span class="chip-type">${esc(o.type)}</span>` : ""}<span>${esc(o.status)}</span><span class="num">· ${num(o.qty) || 1} db · ${hrs(o.hours)}</span>${o.deadline ? `<span class="num">· határidő ${esc(dayLabel(o.deadline))}</span>` : ""}${o.customer ? `<span>· ${esc(o.customer)}</span>` : ""}${o.sample ? "<span>· minta</span>" : ""}</span>
-   <span class="profit num ${p < 0 ? "neg" : ""}">${p >= 0 ? "+" : ""}${huf(p)}</span></button>`;
+   <span class="profit num ${p < 0 ? "neg" : ""}">${p >= 0 ? "+" : ""}${huf(p)}</span></button><button type="button" class="ox" data-action="delOrder" data-id="${esc(o.id)}" aria-label="${esc(o.product || "Rendelés")} törlése">${I.x}</button></div>`;
 }
 const allOrders = () => Object.entries(data().orders).map(([id, o]) => Object.assign({ id }, o));
 function attention() {
@@ -447,6 +451,28 @@ function vExp() {
   const es = m.es.sort((a, b) => b.date.localeCompare(a.date));
   h += `<div class="card"><div class="section-title">Tételek</div>${es.length ? `<div class="rows">${es.map((e) => `<div class="row tap" data-action="editExp" data-id="${esc(e.id)}"><div class="l"><b>${esc(e.cat || "Egyéb")}</b>${e.sample ? ' <span class="t">· minta</span>' : ""}<div class="t">${esc(dayLabel(e.date))}${e.note ? " · " + esc(e.note) : ""}${e.docNo ? " · " + esc(e.docNo) : ""}</div></div><div class="r"><b class="num">${huf(e.amount)}</b></div></div>`).join("")}</div>` : '<p class="note" style="margin:0">Még nincs kiadás ebben a hónapban.</p>'}
   <div class="btns" style="margin-top:12px"><button type="button" class="btn primary" data-action="newExp">Új kiadás</button></div></div></div>`;
+  return h;
+}
+
+/* Készlet */
+const UNITS = ["db", "m", "tekercs", "kg", "csomag", "pár"];
+const fmtQty = (n) => (Math.round(num(n) * 100) / 100).toLocaleString("hu-HU");
+const stockList = () => Object.entries(data().stock).map(([id, x]) => Object.assign({ id }, x)).sort((a, b) => String(a.name).localeCompare(String(b.name), "hu"));
+const isLow = (x) => num(x.min) > 0 && num(x.qty) <= num(x.min);
+const lowStock = () => stockList().filter(isLow);
+function vStock() {
+  const all = stockList(), f = ui.stockF || "all";
+  const list = all.filter((x) => f === "all" || (f === "low" ? isLow(x) : x.kind === f));
+  const value = all.reduce((s, x) => s + num(x.qty) * num(x.price), 0), low = all.filter(isLow).length;
+  const seg = (v, l) => `<button type="button" data-action="stockF" data-v="${v}" aria-pressed="${f === v}">${l}</button>`;
+  let h = `<h2 class="page-title">Készlet</h2><div class="stack">
+   <section class="hero"><div class="label">Raktáron lévő készlet értéke</div><div class="big num">${huf(value)}</div><div class="eq num">${all.length} tétel${low ? ` · ${low} fogyóban` : ""}</div></section>`;
+  if (!all.length) return h + `<div class="card empty"><h3>Még üres a készlet</h3><p>Vedd fel a fonalakat, fa karikákat, kellékeket és a kész, eladásra váró termékeket. A mennyiséget egy koppintással növelheted vagy csökkentheted.</p><button type="button" class="btn primary" data-action="newStock">Első tétel felvétele</button></div></div>`;
+  h += `<div class="seg">${seg("all", "Mind")}${seg("mat", "Alapanyag")}${seg("prod", "Kész termék")}${seg("low", "Fogyóban")}</div>
+   <div class="card" style="padding-block:6px">${list.length ? `<div class="rows">${list.map((x) => `<div class="row stock-row">
+     <div class="l tap" data-action="editStock" data-id="${esc(x.id)}"><b>${esc(x.name)}</b>${isLow(x) ? ' <span class="pill st-late">fogyóban</span>' : ""}<div class="t num">${x.kind === "prod" ? "Kész termék" : "Alapanyag"}${num(x.price) ? ` · ${huf(x.price)}/${esc(x.unit)} · érték ${huf(num(x.qty) * num(x.price))}` : ""}${num(x.min) ? ` · min. ${fmtQty(x.min)}` : ""}</div></div>
+     <div class="r qty"><button type="button" class="qbtn" data-action="stockStep" data-id="${esc(x.id)}" data-k="-1" aria-label="Csökkentés">${I.minus}</button><b class="num">${fmtQty(x.qty)}<small> ${esc(x.unit)}</small></b><button type="button" class="qbtn" data-action="stockStep" data-id="${esc(x.id)}" data-k="1" aria-label="Növelés">${I.plus}</button></div></div>`).join("")}</div>` : '<p class="note">Nincs ilyen tétel.</p>'}</div>
+   <div class="btns"><button type="button" class="btn primary" data-action="newStock">Új tétel</button></div></div>`;
   return h;
 }
 
@@ -560,6 +586,10 @@ function vSet() {
    <div class="copyline"><code>${esc(location.origin + "/")}</code><button type="button" class="btn small" data-action="copyLink">Másolás</button></div>
   </div></div>
 
+  <div class="card"><div class="section-title">Visszajelzés</div><div class="stack" style="gap:12px">
+   <label class="switch"><input type="checkbox" data-action="fxToggle" data-k="vib" ${fxPrefs().vib ? "checked" : ""}><span><b>Rezgés</b> gombnyomáskor<br><span class="note">Androidon működik, iPhone-on a böngésző nem engedi.</span></span></label>
+   <label class="switch"><input type="checkbox" data-action="fxToggle" data-k="snd" ${fxPrefs().snd ? "checked" : ""}><span><b>Halk hang</b> (fagyöngy a zsinóron)<br><span class="note">A telefon némítója ezt is elnémítja.</span></span></label>
+  </div></div>
   <div class="card"><div class="section-title">Célok és számítás</div><div class="stack" style="gap:12px">
    <div class="grid2"><div class="field"><label for="s-target">Havi bevételi cél (Ft)</label><input class="in-ctl num" id="s-target" inputmode="numeric" data-s="target" data-num value="${num(s.target) || ""}" placeholder="pl. 250000"></div>
    <div class="field"><label for="s-tax">Adó- és járuléktartalék (%)</label><input class="in-ctl num" id="s-tax" inputmode="decimal" data-s="taxPct" data-num value="${num(s.taxPct) || ""}" placeholder="pl. 15"></div></div>
@@ -584,7 +614,7 @@ function vSet() {
    <div class="btns"><button type="button" class="btn" data-action="sample">Mintaadatok betöltése</button><button type="button" class="btn" data-action="clearSample">Mintaadatok törlése</button>
    ${uiConfirm === "wipe" ? '<button type="button" class="btn danger solid" data-action="wipe">Igen, minden rendelés és kiadás törlése</button><button type="button" class="btn" data-action="cancelConfirm">Mégse</button>' : '<button type="button" class="btn danger" data-action="askWipe">Minden adat törlése</button>'}</div>
   </div></div>
-  <p class="note" style="text-align:center">SM home dekor Planner · 2.1</p>
+  <p class="note" style="text-align:center">SM home dekor Planner · 2.2</p>
   </div>`;
 }
 
@@ -594,6 +624,10 @@ function openOrder(id) {
   const base = { date: ui.day, deadline: "", product: "", type: "", qty: 1, cost: "", price: "", hours: "", customer: "", channel: "", status: STATUSES[0], paid: false, note: "", invoiceNo: "", payMethod: "", payDate: "", photo: null };
   const d = Object.assign(base, id ? clone(data().orders[id]) : {});
   sheet = { kind: "order", id: id || null, newId: id || uid("r"), data: d, origPhoto: d.photo && d.photo.path ? d.photo.path : null, uploads: [] }; sheetConfirm = false; drawSheet();
+}
+function openStock(id) {
+  const base = { name: "", kind: "mat", qty: "", unit: "db", price: "", min: "", note: "", buyQty: "", buyAmount: "", buyExp: true, buyCat: data().settings.expCats.includes("Fonal") ? "Fonal" : (data().settings.expCats[0] || "Egyéb") };
+  sheet = { kind: "stock", id: id || null, data: Object.assign(base, id ? clone(data().stock[id]) : {}) }; sheetConfirm = false; drawSheet();
 }
 function openExp(id) {
   const d0 = ymOf(TODAY) === ui.month ? TODAY : ui.month + "-01";
@@ -630,6 +664,21 @@ function drawSheet() {
       <div class="field"><label for="f-payMethod">Fizetés módja</label><select class="in-ctl" id="f-payMethod" data-f="payMethod">${opts(PAY, d.payMethod, "–")}</select></div></div>
       <p class="note" style="margin:0">A „Teljesítve” és kifizetett rendelések kerülnek a NAV kimutatásba, a kifizetés napja szerint.</p>
      </fieldset>`;
+  } else if (sheet.kind === "stock") {
+    body = `<div class="field"><label for="f-name">Megnevezés</label><input class="in-ctl" id="f-name" data-f="name" value="${esc(d.name)}" placeholder="pl. Pamutzsinór 5 mm, natúr"></div>
+     <div class="grid2"><div class="field"><label for="f-kind">Típus</label><select class="in-ctl" id="f-kind" data-f="kind"><option value="mat" ${d.kind !== "prod" ? "selected" : ""}>Alapanyag</option><option value="prod" ${d.kind === "prod" ? "selected" : ""}>Kész termék</option></select></div>
+     <div class="field"><label for="f-unit">Egység</label><select class="in-ctl" id="f-unit" data-f="unit">${opts(UNITS, d.unit)}</select></div></div>
+     <div class="grid3"><div class="field"><label for="f-qty">Mennyiség</label><input class="in-ctl num" id="f-qty" inputmode="decimal" data-f="qty" value="${esc(d.qty)}" placeholder="0"></div>
+     <div class="field"><label for="f-price">Egységár (Ft)</label><input class="in-ctl num" id="f-price" inputmode="numeric" data-f="price" value="${esc(d.price)}" placeholder="beszerzési"></div>
+     <div class="field"><label for="f-min">Minimum</label><input class="in-ctl num" id="f-min" inputmode="decimal" data-f="min" value="${esc(d.min)}" placeholder="figyelmeztet"></div></div>
+     <div class="field"><label for="f-note">Megjegyzés</label><input class="in-ctl" id="f-note" data-f="note" value="${esc(d.note)}" placeholder="pl. beszállító, szín, tárolás helye"></div>
+     <fieldset class="fieldset"><legend>Beszerzés rögzítése</legend>
+      <div class="grid2"><div class="field"><label for="f-buyQty">Vásárolt mennyiség</label><input class="in-ctl num" id="f-buyQty" inputmode="decimal" data-f="buyQty" value="${esc(d.buyQty)}" placeholder="+ ${esc(d.unit)}"></div>
+      <div class="field"><label for="f-buyAmount">Fizetett összeg (Ft)</label><input class="in-ctl num" id="f-buyAmount" inputmode="numeric" data-f="buyAmount" value="${esc(d.buyAmount)}"></div></div>
+      <label class="switch"><input type="checkbox" id="f-buyExp" data-f="buyExp" ${d.buyExp ? "checked" : ""}><span><b>Kiadásként is rögzítse</b></span></label>
+      <div class="field"><label for="f-buyCat">Kiadás kategóriája</label><select class="in-ctl" id="f-buyCat" data-f="buyCat">${opts(s.expCats, d.buyCat)}</select></div>
+      <p class="note" style="margin:0">Mentéskor a mennyiséghez hozzáadja a vásároltat, és ha megadtál összeget, a Kiadásokhoz is felveszi a mai nappal.</p>
+     </fieldset>`;
   } else {
     body = `<div class="grid2"><div class="field"><label for="f-date">Dátum</label><input class="in-ctl" type="date" id="f-date" data-f="date" value="${esc(d.date)}"></div>
      <div class="field"><label for="f-cat">Kategória</label><select class="in-ctl" id="f-cat" data-f="cat">${opts(s.expCats, d.cat)}</select></div></div>
@@ -639,7 +688,7 @@ function drawSheet() {
   }
   const delBtn = sheet.id ? (sheetConfirm ? '<button type="button" class="btn danger solid" data-action="sheetDel">Igen, törlöm</button>' : '<button type="button" class="btn danger" data-action="askDel">Törlés</button>') : "";
   box.innerHTML = `<div class="overlay" data-action="closeSheetBg"><form class="sheet" id="sheetForm" role="dialog" aria-modal="true" aria-labelledby="sh-t" novalidate>
-   <div class="sheet-head"><h3 id="sh-t">${sheet.kind === "order" ? (sheet.id ? "Rendelés szerkesztése" : "Új rendelés") : (sheet.id ? "Kiadás szerkesztése" : "Új kiadás")}</h3><button type="button" class="iconbtn" data-action="closeSheet" aria-label="Bezárás">${I.x}</button></div>
+   <div class="sheet-head"><h3 id="sh-t">${sheet.kind === "order" ? (sheet.id ? "Rendelés szerkesztése" : "Új rendelés") : sheet.kind === "stock" ? (sheet.id ? "Készlettétel" : "Új készlettétel") : (sheet.id ? "Kiadás szerkesztése" : "Új kiadás")}</h3><button type="button" class="iconbtn" data-action="closeSheet" aria-label="Bezárás">${I.x}</button></div>
    ${body}<p class="note" id="formErr" hidden style="color:var(--danger);margin:0"></p>
    <div class="btns" style="justify-content:space-between"><span>${delBtn}</span><button class="btn primary" type="submit" ${sheet.uploading ? "disabled" : ""}>Mentés</button></div></form></div>`;
   updPreview(); loadThumbs();
@@ -659,7 +708,7 @@ function applyType() {
 function submitSheet() {
   const d = sheet.data, err = document.getElementById("formErr");
   const fail = (m) => { err.textContent = m; err.hidden = false; err.scrollIntoView({ block: "nearest" }); };
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(d.date || "")) return fail("Adj meg egy dátumot.");
+  if (sheet.kind !== "stock" && !/^\d{4}-\d{2}-\d{2}$/.test(d.date || "")) return fail("Adj meg egy dátumot.");
   if (sheet.kind === "order") {
     if (!d.product && !d.type) return fail("Adj meg terméknevet vagy típust.");
     if (d.paid && !d.payDate) d.payDate = TODAY;
@@ -668,13 +717,22 @@ function submitSheet() {
     const id = sheet.newId, keep = o.photo && o.photo.path;
     dropPhotos([...sheet.uploads, sheet.origPhoto].filter((x) => x && x !== keep));
     sheet = null; drawSheet(); ui.day = ui.calBy === "deadline" && o.deadline ? o.deadline : o.date; ui.month = ymOf(ui.day);
-    setRec(id, "order", o); toast("Rendelés elmentve");
+    setRec(id, "order", o); haptic("save"); toast("Rendelés elmentve");
+  } else if (sheet.kind === "stock") {
+    if (!String(d.name || "").trim()) return fail("Adj meg egy megnevezést.");
+    const add = num(d.buyQty), amt = num(d.buyAmount);
+    const x = { name: String(d.name).trim(), kind: d.kind === "prod" ? "prod" : "mat", qty: Math.round((num(d.qty) + add) * 100) / 100, unit: d.unit || "db", price: add > 0 && amt > 0 ? Math.round(amt / add) : num(d.price), min: num(d.min), note: String(d.note || "").trim() };
+    const id = sheet.id || uid("stk"), buyExp = d.buyExp && amt > 0, cat = d.buyCat;
+    sheet = null; drawSheet();
+    setRec(id, "settings", x, { quiet: true });
+    if (buyExp) setRec(uid("k"), "expense", { date: TODAY, cat: cat || "Egyéb", amount: amt, note: `${x.name} beszerzés${add ? ` (${fmtQty(add)} ${x.unit})` : ""}`, docNo: "", created: Date.now() }, { quiet: true });
+    render(true); haptic("save"); toast(buyExp ? "Készlet és kiadás elmentve" : "Készlet elmentve");
   } else {
     if (!(num(d.amount) > 0)) return fail("Adj meg egy összeget.");
     const e = { date: d.date, cat: d.cat || "Egyéb", amount: num(d.amount), note: String(d.note || "").trim(), docNo: String(d.docNo || "").trim(), created: d.created || Date.now() };
     if (d.fixedId) e.fixedId = d.fixedId; if (d.sample) e.sample = true;
     const id = sheet.id || uid("k"); sheet = null; drawSheet(); ui.month = ymOf(e.date);
-    setRec(id, "expense", e); toast("Kiadás elmentve");
+    setRec(id, "expense", e); haptic("save"); toast("Kiadás elmentve");
   }
 }
 
@@ -802,7 +860,7 @@ function csvReport() {
 }
 function exportJson() {
   const d = data();
-  return JSON.stringify({ app: "sm-home-dekor", version: 2, exported: new Date().toISOString(), settings: d.settings, business: d.biz, orders: d.orders, expenses: d.expenses, docs: d.docs }, null, 1);
+  return JSON.stringify({ app: "sm-home-dekor", version: 2, exported: new Date().toISOString(), settings: d.settings, business: d.biz, orders: d.orders, expenses: d.expenses, docs: d.docs, stock: d.stock }, null, 1);
 }
 function importData(obj, quietToast) {
   const os = (obj && obj.orders) || {}, es = (obj && obj.expenses) || {};
@@ -813,6 +871,7 @@ function importData(obj, quietToast) {
   if (obj.settings) setRec("settings", "settings", mergeDef(obj.settings), { quiet: true });
   if (obj.business) setRec("business", "business", Object.assign(clone(BIZ_DEF), obj.business), { quiet: true });
   if (obj.docs) for (const [k, v] of Object.entries(obj.docs)) if (!store.recs[k]) setRec(k, "doc", v, { quiet: true });
+  if (obj.stock) for (const [k, v] of Object.entries(obj.stock)) if (k.startsWith("stk-")) setRec(k, "settings", v, { quiet: true });
   render(true); if (!quietToast) toast(`Visszatöltve: ${no} rendelés, ${ne} kiadás`);
 }
 document.getElementById("importFile").addEventListener("change", (e) => {
@@ -856,6 +915,18 @@ const A = {
   closeSheetBg: (b, e) => { if (e.target === b) closeSheet(); },
   askDel: () => { sheetConfirm = true; drawSheet(); },
   sheetDel: () => { const id = sheet.id; if (sheet.kind === "order") dropPhotos([...sheet.uploads, sheet.origPhoto]); sheet = null; drawSheet(); delRec(id); toast("Törölve"); },
+  delOrder: (b) => {
+    const id = b.dataset.id, o = data().orders[id]; if (!o) return;
+    const raw = clone(store.recs[id].data); delRec(id);
+    let undone = false;
+    toast(`„${o.product || o.type || "Rendelés"}” törölve`, "Visszavonás", () => { undone = true; setRec(id, "order", raw); haptic("tap"); });
+    setTimeout(() => { if (!undone && o.photo && o.photo.path) dropPhotos([o.photo.path]); }, 7000);
+  },
+  newStock: () => openStock(),
+  editStock: (b) => openStock(b.dataset.id),
+  stockF: (b) => { ui.stockF = b.dataset.v; render(true); },
+  stockStep: (b) => { const x = clone(data().stock[b.dataset.id]); if (!x) return; x.qty = Math.max(0, Math.round((num(x.qty) + +b.dataset.k) * 100) / 100); setRec(b.dataset.id, "settings", x); },
+  fxToggle: (b) => { const p = fxPrefs(); p[b.dataset.k] = !p[b.dataset.k]; try { localStorage.setItem("smhd-fx", JSON.stringify(p)); } catch (e) {} render(true); },
   addFixed: () => {
     const s = data().settings, m = stats(ui.month), day = ymOf(TODAY) === ui.month ? TODAY : ui.month + "-01";
     s.fixed.filter((f) => !m.es.some((e) => e.fixedId === f.id)).forEach((f) => setRec(uid("k"), "expense", { date: day, cat: f.cat, amount: num(f.amount), note: f.note || "havi fix", docNo: "", fixedId: f.id, created: Date.now() }, { quiet: true }));
@@ -893,10 +964,13 @@ const A = {
 document.addEventListener("click", (e) => {
   const b = e.target.closest("[data-action]"); if (!b) return;
   const f = A[b.dataset.action]; if (!f) return;
+  const act = b.dataset.action;
+  if (act === "delOrder" || act === "sheetDel") haptic("del");
+  else if (!["closeSheetBg", "closeViewer", "fxToggle"].includes(act) || (act === "closeSheetBg" && e.target === b)) haptic("tap");
   if (b.dataset.action !== "closeSheetBg") e.preventDefault();
   f(b, e);
 });
-document.getElementById("fab").addEventListener("click", () => { if (ui.tab === "exp") openExp(); else A.newOrder(); });
+document.getElementById("fab").addEventListener("click", () => { haptic("tap"); if (ui.tab === "exp") openExp(); else if (ui.tab === "stock") openStock(); else A.newOrder(); });
 document.addEventListener("submit", (e) => { e.preventDefault(); if (e.target.id === "sheetForm") submitSheet(); else if (e.target.id === "authForm") authSubmit(); });
 document.addEventListener("keydown", (e) => {
   if (e.key === "Escape") { const v = document.getElementById("viewer"); if (!v.hidden) v.hidden = true; else if (sheet) closeSheet(); }
@@ -924,7 +998,44 @@ document.addEventListener("input", (e) => {
   }
 });
 let toastT = null;
-function toast(m) { const el = document.getElementById("toast"); el.textContent = m; el.hidden = false; clearTimeout(toastT); toastT = setTimeout(() => { el.hidden = true; }, 2800); }
+function toast(m, actionLabel, fn) {
+  const el = document.getElementById("toast"); el.textContent = m; el.hidden = false; el.classList.toggle("has-act", !!actionLabel);
+  if (actionLabel) { const btn = document.createElement("button"); btn.type = "button"; btn.textContent = actionLabel; btn.onclick = (e) => { e.stopPropagation(); el.hidden = true; fn(); }; el.appendChild(btn); }
+  clearTimeout(toastT); toastT = setTimeout(() => { el.hidden = true; }, actionLabel ? 6000 : 2800);
+}
+
+/* ---------- Visszajelzés: rezgés és halk „fagyöngy a zsinóron” hang ---------- */
+function fxPrefs() { try { return Object.assign({ vib: true, snd: true }, JSON.parse(localStorage.getItem("smhd-fx") || "{}")); } catch (e) { return { vib: true, snd: true }; } }
+let audio = null;
+function haptic(kind) {
+  const p = fxPrefs();
+  if (p.vib && navigator.vibrate) { try { navigator.vibrate(kind === "save" ? [10, 50, 14] : kind === "del" ? 22 : 8); } catch (e) {} }
+  if (p.snd) bead(kind);
+}
+function bead(kind) {
+  try {
+    audio = audio || new (window.AudioContext || window.webkitAudioContext)();
+    const c = audio; if (c.state === "suspended") c.resume();
+    const t = c.currentTime;
+    const tone = (f, at, vol) => {
+      const o = c.createOscillator(), g = c.createGain(), lp = c.createBiquadFilter();
+      lp.type = "lowpass"; lp.frequency.value = 1600; o.type = "triangle";
+      o.frequency.setValueAtTime(f, t + at); o.frequency.exponentialRampToValueAtTime(f * 0.86, t + at + 0.14);
+      g.gain.setValueAtTime(0.0001, t + at); g.gain.exponentialRampToValueAtTime(vol, t + at + 0.005); g.gain.exponentialRampToValueAtTime(0.0001, t + at + 0.18);
+      o.connect(lp); lp.connect(g); g.connect(c.destination); o.start(t + at); o.stop(t + at + 0.2);
+    };
+    const cord = (at, vol, dur) => {
+      const n = Math.floor(c.sampleRate * dur), buf = c.createBuffer(1, n, c.sampleRate), ch = buf.getChannelData(0);
+      for (let i = 0; i < n; i++) ch[i] = (Math.random() * 2 - 1) * (1 - i / n);
+      const src = c.createBufferSource(), bp = c.createBiquadFilter(), g = c.createGain();
+      bp.type = "bandpass"; bp.frequency.value = 2200; bp.Q.value = 0.7; g.gain.value = vol;
+      src.buffer = buf; src.connect(bp); bp.connect(g); g.connect(c.destination); src.start(t + at);
+    };
+    if (kind === "save") { cord(0, 0.05, 0.06); tone(587, 0.01, 0.05); tone(784, 0.11, 0.045); }
+    else if (kind === "del") { cord(0, 0.06, 0.09); tone(392, 0.01, 0.05); }
+    else { cord(0, 0.035, 0.04); tone(698, 0, 0.035); }
+  } catch (e) { /* hang nélkül megy tovább */ }
+}
 
 /* ---------- Indítás ---------- */
 render();
