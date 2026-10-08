@@ -48,7 +48,24 @@ const shiftDay = (ds, k) => { const d = new Date(ds + "T12:00"); d.setDate(d.get
 const short = (v) => { const a = Math.abs(v); if (a >= 1e6) return (v / 1e6).toLocaleString("hu-HU", { maximumFractionDigits: 1 }) + " M"; if (a >= 1e3) return Math.round(v / 1e3) + "e"; return String(Math.round(v)); };
 const fmtSize = (b) => b > 1048576 ? (b / 1048576).toLocaleString("hu-HU", { maximumFractionDigits: 1 }) + " MB" : Math.max(1, Math.round(b / 1024)) + " KB";
 function mergeDef(s) { const o = Object.assign(clone(DEF), s || {}); ["types", "expCats", "channels", "fixed"].forEach((k) => { if (!Array.isArray(o[k])) o[k] = clone(DEF[k]); }); return o; }
-function normOrder(o) { o = Object.assign({}, o); if (o.status === "Átadva") o.status = "Teljesítve"; if (!STATUSES.includes(o.status)) o.status = STATUSES[0]; return o; }
+function normOrder(o) {
+  o = Object.assign({}, o);
+  if (o.status === "Átadva") o.status = "Teljesítve";
+  if (!STATUSES.includes(o.status)) o.status = STATUSES[0];
+  if (o.paid === undefined) o.paid = o.status === "Teljesítve" || !!o.payDate;
+  return o;
+}
+/* Rendelés állapota a színekhez: lemaradt > nem fizetett > folyamatban > kész */
+const STATE = {
+  late: { label: "Lemaradt", rank: 3 }, unpaid: { label: "Nem fizetett", rank: 2 },
+  open: { label: "Folyamatban", rank: 1 }, done: { label: "Kész, fizetve", rank: 0 }
+};
+function orderState(o) {
+  if (o.status === "Megrendelve" && o.deadline && o.deadline < TODAY) return "late";
+  if (o.status !== "Megrendelve" && !o.paid) return "unpaid";
+  if (o.status === "Teljesítve" && o.paid) return "done";
+  return "open";
+}
 
 /* ---------- Helyi tár ---------- */
 const store = { recs: {}, dirty: {}, lastSync: null, uid: null };
@@ -250,7 +267,7 @@ function render(force) {
   if (CLOUD && !sync.firstDone && !hasAny() && online() && sb) { main.innerHTML = '<div class="card empty"><h3>Adatok letöltése…</h3><p>Szinkronizálom a felhőből a rendeléseket és kiadásokat.</p></div>'; return; }
   main.innerHTML = ({ home: vHome, log: vLog, exp: vExp, nav: vNav, biz: vBiz, set: vSet }[ui.tab])();
   window.scrollTo(0, y);
-  if (ui.tab === "biz") loadThumbs();
+  loadThumbs();
   if (ui.tab === "set") drawQr();
 }
 document.addEventListener("focusout", () => { setTimeout(() => { if (pending) render(); }, 0); });
@@ -329,7 +346,8 @@ function vHome() {
    ${kpi("Órabér", m.hourly == null ? "–" : huf(m.hourly), "anyag levonása után")}
   </div>
   ${num(s.taxPct) > 0 ? `<div class="card"><div class="rows"><div class="row"><span>Adó- és járuléktartalék (${num(s.taxPct)}%)</span><b class="num">${huf(m.tax)}</b></div><div class="row"><span>Ami ténylegesen marad</span><b class="num">${huf(m.net)}</b></div></div></div>` : ""}`;
-  const today = stats(TODAY), open = Object.values(data().orders).filter((o) => o.status !== "Teljesítve").length;
+  const today = stats(TODAY), open = Object.values(data().orders).filter((o) => o.status !== "Teljesítve").length, att = attention();
+  if (att.list.length) h += `<div class="card"><div class="section-title">Figyelmet igényel</div><div class="btns">${att.late ? `<span class="pill st-late">${att.late} lemaradt</span>` : ""}${att.unpaid.length ? `<span class="pill st-unpaid">${att.unpaid.length} nem fizetett · ${huf(att.unpaidSum)}</span>` : ""}<button type="button" class="btn small" data-action="tab" data-t="log">Megnézem</button></div></div>`;
   h += `<div class="card"><div class="section-title">Ma · ${esc(dayLabel(TODAY))}, ${esc(weekday(TODAY))}</div>
    <div class="row" style="border:0;padding:0"><div class="l"><b class="num">${today.n} rendelés</b><div class="t num">${huf(today.rev)} bevétel · ${hrs(today.h)} munka${open ? ` · ${open} nyitott rendelés összesen` : ""}</div></div>
    <div class="r"><button type="button" class="btn small" data-action="goDay" data-d="${TODAY}">Napló</button></div></div></div>`;
@@ -369,27 +387,49 @@ function chart(ms) {
 }
 
 /* Napló */
+const photoImg = (ph, cls, extra) => !ph ? "" : ph.dataUrl ? `<img class="${cls}" src="${ph.dataUrl}" alt="" ${extra || ""}>` : `<img class="${cls}" data-thumb="${esc(ph.path)}" alt="" ${extra || ""}>`;
 function orderCard(o) {
-  const p = num(o.price) - num(o.cost), si = Math.max(0, STATUSES.indexOf(o.status));
-  return `<button type="button" class="order" data-action="editOrder" data-id="${esc(o.id)}">
-   <span class="name">${esc(o.product || o.type || "Rendelés")}</span><span class="price num">${huf(o.price)}</span>
-   <span class="meta">${o.type ? `<span class="chip-type">${esc(o.type)}</span>` : ""}<span class="pill s${si}">${esc(STATUSES[si])}</span><span class="num">${num(o.qty) || 1} db · ${hrs(o.hours)}</span>${o.customer ? `<span>· ${esc(o.customer)}</span>` : ""}${o.invoiceNo ? `<span>· ${esc(o.invoiceNo)}</span>` : ""}${o.sample ? "<span>· minta</span>" : ""}</span>
+  const p = num(o.price) - num(o.cost), st = orderState(o);
+  return `<button type="button" class="order st-${st}" data-action="editOrder" data-id="${esc(o.id)}">
+   <span class="oname">${photoImg(o.photo, "othumb")}<span class="name">${esc(o.product || o.type || "Rendelés")}</span></span><span class="price num">${huf(o.price)}</span>
+   <span class="meta"><span class="pill st-${st}">${esc(STATE[st].label)}</span>${o.type ? `<span class="chip-type">${esc(o.type)}</span>` : ""}<span>${esc(o.status)}</span><span class="num">· ${num(o.qty) || 1} db · ${hrs(o.hours)}</span>${o.deadline ? `<span class="num">· határidő ${esc(dayLabel(o.deadline))}</span>` : ""}${o.customer ? `<span>· ${esc(o.customer)}</span>` : ""}${o.sample ? "<span>· minta</span>" : ""}</span>
    <span class="profit num ${p < 0 ? "neg" : ""}">${p >= 0 ? "+" : ""}${huf(p)}</span></button>`;
 }
+const allOrders = () => Object.entries(data().orders).map(([id, o]) => Object.assign({ id }, o));
+function attention() {
+  const os = allOrders().map((o) => Object.assign(o, { st: orderState(o) })).filter((o) => o.st === "late" || o.st === "unpaid");
+  os.sort((a, b) => STATE[b.st].rank - STATE[a.st].rank || String(a.deadline || a.date).localeCompare(String(b.deadline || b.date)));
+  return { list: os, late: os.filter((o) => o.st === "late").length, unpaid: os.filter((o) => o.st === "unpaid"), unpaidSum: sum(os.filter((o) => o.st === "unpaid"), "price") };
+}
+function calendar(ym) {
+  const [y, m] = ym.split("-").map(Number), by = ui.calBy === "deadline" ? "deadline" : "date";
+  const offset = (new Date(y, m - 1, 1).getDay() + 6) % 7, days = new Date(y, m, 0).getDate(), map = {};
+  allOrders().forEach((o) => { const k = o[by]; if (k && k.startsWith(ym)) (map[k] = map[k] || []).push(o); });
+  let g = ["H", "K", "Sze", "Cs", "P", "Szo", "V"].map((d) => `<div class="dow">${d}</div>`).join("");
+  for (let i = 0; i < offset; i++) g += '<div class="blank"></div>';
+  for (let d = 1; d <= days; d++) {
+    const k = `${ym}-${pad(d)}`, os = map[k] || [];
+    let worst = null; os.forEach((o) => { const s = orderState(o); if (!worst || STATE[s].rank > STATE[worst].rank) worst = s; });
+    const dots = os.slice(0, 5).map((o) => `<i class="dot-${orderState(o)}"></i>`).join("");
+    g += `<button type="button" class="d ${worst ? "st-" + worst : ""} ${k === TODAY ? "today" : ""} ${k === ui.day ? "sel" : ""}" data-action="pickDay" data-d="${k}" aria-label="${esc(dayLabel(k))}: ${os.length} rendelés"><span class="n">${d}</span><span class="c num">${os.length || ""}</span><span class="dots">${dots}</span></button>`;
+  }
+  return `<div class="cal">${g}</div>`;
+}
 function vLog() {
-  const d = stats(ui.day), os = d.os.sort((a, b) => (a.created || 0) - (b.created || 0));
-  let h = `<div class="navrow"><button type="button" class="iconbtn" data-action="day" data-k="-1" aria-label="Előző nap">${I.prev}</button>
-   <label class="daypick"><span class="lbl">${esc(dayLabel(ui.day))}<small>${esc(weekday(ui.day))}${ui.day === TODAY ? " · ma" : ""}</small></span><input type="date" id="dayInput" value="${ui.day}" aria-label="Nap kiválasztása"></label>
-   <button type="button" class="iconbtn" data-action="day" data-k="1" aria-label="Következő nap">${I.next}</button></div>`;
+  const by = ui.calBy === "deadline" ? "deadline" : "date";
+  let h = monthNav();
   if (!hasAny()) return h + emptyCard();
-  h += `<div class="stack"><div class="kpis">${kpi("Rendelés", d.n + " db", d.qty + " darab termék")}${kpi("Bevétel", huf(d.rev), "")}${kpi("Haszon", huf(d.rev - d.mat), hrs(d.h) + " munka")}</div>`;
-  h += os.length ? `<div class="stack" style="gap:10px">${os.map(orderCard).join("")}</div>` : `<div class="card empty" style="padding:18px"><p>Ezen a napon még nincs rendelés.</p></div>`;
-  h += `<div class="btns"><button type="button" class="btn primary" data-action="newOrder">Rendelés erre a napra</button>${ui.day !== TODAY ? `<button type="button" class="btn" data-action="goDay" data-d="${TODAY}">Ugrás a mai napra</button>` : ""}</div>`;
-  const ym = ymOf(ui.day), ms = stats(ym), days = {};
-  ms.os.forEach((o) => { const x = days[o.date] || (days[o.date] = { n: 0, rev: 0, pr: 0 }); x.n++; x.rev += num(o.price); x.pr += num(o.price) - num(o.cost); });
-  const de = Object.entries(days).sort((a, b) => b[0].localeCompare(a[0]));
-  h += `<div class="card"><div class="section-title">${esc(monthLabel(ym))} napjai</div>${de.length ? `<div class="rows">${de.map(([k, x]) => `<div class="row tap" data-action="goDay" data-d="${k}"><div class="l"><b>${esc(dayLabel(k))}</b> <span class="t">${esc(weekday(k))}</span><div class="t num">${x.n} rendelés</div></div><div class="r"><b class="num">${huf(x.rev)}</b><div class="t num">haszon ${huf(x.pr)}</div></div></div>`).join("")}</div>
-   <div class="row" style="border-top:1px solid var(--line);margin-top:6px"><b>Hónap összesen</b><b class="num">${huf(ms.rev)}</b></div>` : '<p class="note" style="margin:0">Ebben a hónapban még nincs rendelés.</p>'}</div></div>`;
+  const att = attention();
+  h += `<div class="stack"><div class="card"><div class="seg" style="margin-bottom:12px"><button type="button" data-action="calBy" data-v="date" aria-pressed="${by === "date"}">Rendelés napja</button><button type="button" data-action="calBy" data-v="deadline" aria-pressed="${by === "deadline"}">Határidő</button></div>
+   ${calendar(ui.month)}
+   <div class="legend" style="margin-top:12px"><span><i class="dot-done"></i>Kész, fizetve</span><span><i class="dot-open"></i>Folyamatban</span><span><i class="dot-unpaid"></i>Nem fizetett</span><span><i class="dot-late"></i>Lemaradt</span></div></div>`;
+  if (att.list.length) h += `<div class="card"><div class="section-title">Figyelmet igényel</div><div class="rows">${att.list.slice(0, 8).map((o) => `<div class="row tap" data-action="editOrder" data-id="${esc(o.id)}"><div class="l"><span class="pill st-${o.st}">${STATE[o.st].label}</span> <b>${esc(o.product || o.type)}</b><div class="t num">${o.st === "late" ? "határidő: " + esc(dayLabel(o.deadline)) : "rendelve: " + esc(dayLabel(o.date))}${o.customer ? " · " + esc(o.customer) : ""}</div></div><div class="r"><b class="num">${huf(o.price)}</b></div></div>`).join("")}</div>${att.list.length > 8 ? `<p class="note" style="margin:6px 0 0">és még ${att.list.length - 8} tétel</p>` : ""}</div>`;
+  const os = allOrders().filter((o) => o[by] === ui.day).sort((a, b) => (a.created || 0) - (b.created || 0));
+  const rev = sum(os, "price"), mat = sum(os, "cost"), hh = sum(os, "hours");
+  h += `<div><h2 class="page-title" style="margin-top:4px">${esc(dayLabel(ui.day))}<span class="note" style="font-family:var(--f-body);font-size:14px"> · ${esc(weekday(ui.day))}${ui.day === TODAY ? " · ma" : ""}${by === "deadline" ? " · határidős rendelések" : ""}</span></h2></div>`;
+  if (os.length) h += `<div class="kpis">${kpi("Rendelés", os.length + " db", sum(os, "qty") + " darab termék")}${kpi("Bevétel", huf(rev), "")}${kpi("Haszon", huf(rev - mat), hrs(hh) + " munka")}</div><div class="stack" style="gap:10px">${os.map(orderCard).join("")}</div>`;
+  else h += `<div class="card empty" style="padding:18px"><p>Ezen a napon nincs ${by === "deadline" ? "határidős " : ""}rendelés.</p></div>`;
+  h += `<div class="btns"><button type="button" class="btn primary" data-action="newOrder">Rendelés erre a napra</button>${ui.day !== TODAY ? `<button type="button" class="btn" data-action="goDay" data-d="${TODAY}">Ugrás a mai napra</button>` : ""}</div></div>`;
   return h;
 }
 
@@ -420,7 +460,7 @@ function periodOf(p) {
 function reportRows(per) {
   const biz = data().biz, afa = biz.vat === "afa27";
   const rows = Object.entries(data().orders).map(([id, o]) => Object.assign({ id }, o))
-    .filter((o) => o.status === "Teljesítve").map((o) => Object.assign(o, { rd: o.payDate || o.date }))
+    .filter((o) => o.status === "Teljesítve" && o.paid).map((o) => Object.assign(o, { rd: o.payDate || o.date }))
     .filter((o) => o.rd >= per.from && o.rd <= per.to)
     .sort((a, b) => a.rd.localeCompare(b.rd) || (a.created || 0) - (b.created || 0));
   rows.forEach((o, i) => { o.no = i + 1; o.gross = num(o.price); o.net = afa ? Math.round(o.gross / 1.27) : o.gross; o.vat = o.gross - o.net; });
@@ -430,19 +470,19 @@ function vNav() {
   const p = ui.rep, per = periodOf(p), biz = data().biz, afa = biz.vat === "afa27", rows = reportRows(per);
   const tot = { gross: sum(rows, "gross"), net: sum(rows, "net"), vat: sum(rows, "vat") };
   const missing = rows.filter((r) => !r.invoiceNo).length;
-  const openN = Object.values(data().orders).filter((o) => o.status !== "Teljesítve" && o.date >= per.from && o.date <= per.to).length;
+  const openN = Object.values(data().orders).filter((o) => !(o.status === "Teljesítve" && o.paid) && o.date >= per.from && o.date <= per.to).length;
   const ytd = reportRows(periodOf({ year: p.year, kind: "y" })), ytdSum = sum(ytd, "net");
   const segBtn = (kind, n, label) => `<button type="button" data-action="repSet" data-kind="${kind}" data-n="${n}" aria-pressed="${p.kind === kind && (kind === "y" || p.n === n)}">${label}</button>`;
   const months = {}; rows.forEach((r) => { const k = r.rd.slice(0, 7); months[k] = (months[k] || 0) + r.net; });
   const bizOk = biz.owner && biz.taxNo;
-  let h = `<div class="noprint"><h2 class="page-title">NAV bevételi kimutatás</h2><p class="note" style="margin:0 0 10px">Időrendi bevételi nyilvántartás a lezárt, „Teljesítve” állapotú rendelésekből, a kifizetés napja szerint.</p>
+  let h = `<div class="noprint"><h2 class="page-title">NAV bevételi kimutatás</h2><p class="note" style="margin:0 0 10px">Időrendi bevételi nyilvántartás a „Teljesítve” állapotú, kifizetett rendelésekből, a kifizetés napja szerint.</p>
    <div class="navrow" style="margin-top:6px"><button type="button" class="iconbtn" data-action="repYear" data-k="-1" aria-label="Előző év">${I.prev}</button><h2>${p.year}</h2><button type="button" class="iconbtn" data-action="repYear" data-k="1" aria-label="Következő év">${I.next}</button></div>
    <div class="stack" style="gap:8px"><div class="seg">${segBtn("y", 0, "Egész év")}${[1, 2, 3, 4].map((n) => segBtn("q", n, ROMAN[n - 1] + " negyedév")).join("")}</div>
    <div class="seg">${MON.map((m, i) => segBtn("m", i + 1, m)).join("")}</div></div>
    <div class="stack" style="gap:8px;margin-top:12px">
     ${!bizOk ? `<div class="banner warn"><span>A fejlécbe kerülő vállalkozási adatok hiányosak (név, adószám).</span><button type="button" class="btn small" data-action="tab" data-t="biz">Kitöltés</button></div>` : ""}
     ${missing ? `<div class="banner warn"><span>${missing} tételnél hiányzik a számla / nyugta sorszáma.</span></div>` : ""}
-    ${openN ? `<div class="banner"><span>${openN} rendelés még nincs lezárva ebben az időszakban, ezek nem szerepelnek a kimutatásban.</span></div>` : ""}
+    ${openN ? `<div class="banner"><span>${openN} rendelés ebben az időszakban még nincs lezárva vagy kifizetve, ezek nem szerepelnek a kimutatásban.</span></div>` : ""}
    </div>
    <div class="btns" style="margin-block:12px"><button type="button" class="btn primary" data-action="print">Nyomtatás / PDF</button><button type="button" class="btn" data-action="repCsv">CSV letöltése</button></div></div>`;
   h += `<article class="report" id="report">
@@ -544,15 +584,16 @@ function vSet() {
    <div class="btns"><button type="button" class="btn" data-action="sample">Mintaadatok betöltése</button><button type="button" class="btn" data-action="clearSample">Mintaadatok törlése</button>
    ${uiConfirm === "wipe" ? '<button type="button" class="btn danger solid" data-action="wipe">Igen, minden rendelés és kiadás törlése</button><button type="button" class="btn" data-action="cancelConfirm">Mégse</button>' : '<button type="button" class="btn danger" data-action="askWipe">Minden adat törlése</button>'}</div>
   </div></div>
-  <p class="note" style="text-align:center">SM home dekor Planner · 2.0</p>
+  <p class="note" style="text-align:center">SM home dekor Planner · 2.1</p>
   </div>`;
 }
 
 /* ---------- Lap (rendelés / kiadás) ---------- */
 let sheet = null, sheetConfirm = false;
 function openOrder(id) {
-  const base = { date: ui.day, product: "", type: "", qty: 1, cost: "", price: "", hours: "", customer: "", channel: "", status: STATUSES[0], note: "", invoiceNo: "", payMethod: "", payDate: "" };
-  sheet = { kind: "order", id: id || null, data: Object.assign(base, id ? clone(data().orders[id]) : {}) }; sheetConfirm = false; drawSheet();
+  const base = { date: ui.day, deadline: "", product: "", type: "", qty: 1, cost: "", price: "", hours: "", customer: "", channel: "", status: STATUSES[0], paid: false, note: "", invoiceNo: "", payMethod: "", payDate: "", photo: null };
+  const d = Object.assign(base, id ? clone(data().orders[id]) : {});
+  sheet = { kind: "order", id: id || null, newId: id || uid("r"), data: d, origPhoto: d.photo && d.photo.path ? d.photo.path : null, uploads: [] }; sheetConfirm = false; drawSheet();
 }
 function openExp(id) {
   const d0 = ymOf(TODAY) === ui.month ? TODAY : ui.month + "-01";
@@ -568,7 +609,8 @@ function drawSheet() {
   if (sheet.kind === "order") {
     const names = [...new Set(Object.values(data().orders).map((o) => o.product).filter(Boolean))].slice(0, 80);
     body = `<div class="grid2"><div class="field"><label for="f-date">Rendelés dátuma</label><input class="in-ctl" type="date" id="f-date" data-f="date" value="${esc(d.date)}"></div>
-     <div class="field"><label for="f-type">Típus</label><select class="in-ctl" id="f-type" data-f="type">${opts(s.types.map((t) => t.name), d.type, "Válassz…")}</select></div></div>
+     <div class="field"><label for="f-deadline">Határidő</label><input class="in-ctl" type="date" id="f-deadline" data-f="deadline" value="${esc(d.deadline || "")}"></div></div>
+     <div class="field"><label for="f-type">Típus</label><select class="in-ctl" id="f-type" data-f="type">${opts(s.types.map((t) => t.name), d.type, "Válassz…")}</select></div>
      <div class="field"><label for="f-product">Termék megnevezése</label><input class="in-ctl" id="f-product" data-f="product" list="dl-prod" value="${esc(d.product)}" placeholder="pl. Bohém falikárpit 60 cm"><datalist id="dl-prod">${names.map((n) => `<option value="${esc(n)}">`).join("")}</datalist></div>
      <div class="grid3"><div class="field"><label for="f-qty">Darab</label><input class="in-ctl num" id="f-qty" inputmode="numeric" data-f="qty" value="${esc(d.qty)}"></div>
      <div class="field"><label for="f-cost">Nettó költség (Ft)</label><input class="in-ctl num" id="f-cost" inputmode="numeric" data-f="cost" value="${esc(d.cost)}" placeholder="anyag"></div>
@@ -576,14 +618,17 @@ function drawSheet() {
      <div class="grid2"><div class="field"><label for="f-hours">Munkaidő (óra)</label><input class="in-ctl num" id="f-hours" inputmode="decimal" data-f="hours" value="${esc(d.hours)}" placeholder="pl. 3,5"></div>
      <div class="field"><label for="f-channel">Csatorna</label><select class="in-ctl" id="f-channel" data-f="channel">${opts(s.channels, d.channel, "–")}</select></div></div>
      <div class="field"><label for="f-customer">Vevő (nem kötelező)</label><input class="in-ctl" id="f-customer" data-f="customer" value="${esc(d.customer)}"></div>
-     <div class="field"><label for="f-note">Megjegyzés</label><textarea class="in-ctl" id="f-note" data-f="note" placeholder="szín, méret, határidő…">${esc(d.note)}</textarea></div>
+     <div class="field"><label for="f-note">Megjegyzés</label><textarea class="in-ctl" id="f-note" data-f="note" placeholder="szín, méret, egyéb kérés…">${esc(d.note)}</textarea></div>
+     <div class="field"><label>Fotó, vázlat vagy inspiráció</label><div class="photo-box">${d.photo ? `<button type="button" class="photo-btn" data-action="viewPhoto" aria-label="Fotó nagyítása">${photoImg(d.photo, "pimg")}</button>` : `<div class="photo-empty">${I.file}</div>`}
+      <div class="btns">${sheet.uploading ? '<span class="note">Feltöltés…</span>' : `<button type="button" class="btn small" data-action="pickPhoto">${d.photo ? "Csere" : "Fotó hozzáadása"}</button>${d.photo ? '<button type="button" class="btn small danger" data-action="removePhoto">Eltávolítás</button>' : ""}`}</div></div></div>
      <div class="preview num" id="preview"></div>
      <fieldset class="fieldset"><legend>Lezárás és bizonylat</legend>
       <div class="grid2"><div class="field"><label for="f-status">Állapot</label><select class="in-ctl" id="f-status" data-f="status">${opts(STATUSES, d.status)}</select></div>
+      <label class="switch" style="align-self:end;padding-bottom:10px"><input type="checkbox" id="f-paid" data-f="paid" ${d.paid ? "checked" : ""}><span><b>Kifizetve</b></span></label>
       <div class="field"><label for="f-payDate">Kifizetés napja</label><input class="in-ctl" type="date" id="f-payDate" data-f="payDate" value="${esc(d.payDate)}"></div>
       <div class="field"><label for="f-invoiceNo">Számla / nyugta sorszáma</label><input class="in-ctl" id="f-invoiceNo" data-f="invoiceNo" value="${esc(d.invoiceNo)}" placeholder="pl. SMHD-2026-014"></div>
       <div class="field"><label for="f-payMethod">Fizetés módja</label><select class="in-ctl" id="f-payMethod" data-f="payMethod">${opts(PAY, d.payMethod, "–")}</select></div></div>
-      <p class="note" style="margin:0">A „Teljesítve” állapotú rendelések kerülnek a NAV kimutatásba, a kifizetés napja szerint.</p>
+      <p class="note" style="margin:0">A „Teljesítve” és kifizetett rendelések kerülnek a NAV kimutatásba, a kifizetés napja szerint.</p>
      </fieldset>`;
   } else {
     body = `<div class="grid2"><div class="field"><label for="f-date">Dátum</label><input class="in-ctl" type="date" id="f-date" data-f="date" value="${esc(d.date)}"></div>
@@ -596,8 +641,8 @@ function drawSheet() {
   box.innerHTML = `<div class="overlay" data-action="closeSheetBg"><form class="sheet" id="sheetForm" role="dialog" aria-modal="true" aria-labelledby="sh-t" novalidate>
    <div class="sheet-head"><h3 id="sh-t">${sheet.kind === "order" ? (sheet.id ? "Rendelés szerkesztése" : "Új rendelés") : (sheet.id ? "Kiadás szerkesztése" : "Új kiadás")}</h3><button type="button" class="iconbtn" data-action="closeSheet" aria-label="Bezárás">${I.x}</button></div>
    ${body}<p class="note" id="formErr" hidden style="color:var(--danger);margin:0"></p>
-   <div class="btns" style="justify-content:space-between"><span>${delBtn}</span><button class="btn primary" type="submit">Mentés</button></div></form></div>`;
-  updPreview();
+   <div class="btns" style="justify-content:space-between"><span>${delBtn}</span><button class="btn primary" type="submit" ${sheet.uploading ? "disabled" : ""}>Mentés</button></div></form></div>`;
+  updPreview(); loadThumbs();
 }
 function updPreview() {
   const el = document.getElementById("preview"); if (!el || !sheet) return; const d = sheet.data;
@@ -617,10 +662,12 @@ function submitSheet() {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(d.date || "")) return fail("Adj meg egy dátumot.");
   if (sheet.kind === "order") {
     if (!d.product && !d.type) return fail("Adj meg terméknevet vagy típust.");
-    if (d.status === "Teljesítve" && !d.payDate) d.payDate = d.date;
-    const o = { date: d.date, product: String(d.product || "").trim(), type: d.type || "", qty: num(d.qty) || 1, cost: num(d.cost), price: num(d.price), hours: num(d.hours), customer: String(d.customer || "").trim(), channel: d.channel || "", status: d.status || STATUSES[0], note: String(d.note || "").trim(), invoiceNo: String(d.invoiceNo || "").trim(), payMethod: d.payMethod || "", payDate: d.payDate || "", created: d.created || Date.now() };
+    if (d.paid && !d.payDate) d.payDate = TODAY;
+    const o = { date: d.date, deadline: d.deadline || "", paid: !!d.paid, photo: d.photo || null, product: String(d.product || "").trim(), type: d.type || "", qty: num(d.qty) || 1, cost: num(d.cost), price: num(d.price), hours: num(d.hours), customer: String(d.customer || "").trim(), channel: d.channel || "", status: d.status || STATUSES[0], note: String(d.note || "").trim(), invoiceNo: String(d.invoiceNo || "").trim(), payMethod: d.payMethod || "", payDate: d.payDate || "", created: d.created || Date.now() };
     if (d.sample) o.sample = true;
-    const id = sheet.id || uid("r"); sheet = null; drawSheet(); ui.day = o.date; ui.month = ymOf(o.date);
+    const id = sheet.newId, keep = o.photo && o.photo.path;
+    dropPhotos([...sheet.uploads, sheet.origPhoto].filter((x) => x && x !== keep));
+    sheet = null; drawSheet(); ui.day = ui.calBy === "deadline" && o.deadline ? o.deadline : o.date; ui.month = ymOf(ui.day);
     setRec(id, "order", o); toast("Rendelés elmentve");
   } else {
     if (!(num(d.amount) > 0)) return fail("Adj meg egy összeget.");
@@ -640,7 +687,7 @@ async function loadThumbs() {
   if (need.length && online()) {
     try { const { data: d } = await sb.storage.from("documents").createSignedUrls(need, 3600); (d || []).forEach((x) => { if (x.signedUrl) thumbCache[x.path] = { url: x.signedUrl, exp: now + 3500e3 }; }); } catch (e) {}
   }
-  imgs.forEach((img) => { const c = thumbCache[img.dataset.thumb]; if (c) { img.src = c.url; img.hidden = false; const ic = img.nextElementSibling; if (ic) ic.remove(); } });
+  imgs.forEach((img) => { const c = thumbCache[img.dataset.thumb]; if (c) { if (img.src !== c.url) img.src = c.url; img.hidden = false; const ic = img.nextElementSibling; if (ic && ic.tagName.toLowerCase() === "svg") ic.remove(); } });
 }
 async function shrinkImage(file) {
   if (!/^image\/(jpeg|png|webp|heic|heif)/.test(file.type) || file.size < 1.5e6) return file;
@@ -682,6 +729,50 @@ async function deleteDoc(id) {
   else { toast("Törléshez internetkapcsolat kell."); return; }
   uiConfirm = null; delRec(id); toast("Dokumentum törölve");
 }
+/* Rendelés fotó (1 db) */
+async function resizeImage(file, max, q) {
+  let src;
+  try { src = await createImageBitmap(file); }
+  catch (e) { src = await new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = rej; i.src = URL.createObjectURL(file); }); }
+  const w = src.width, h = src.height, k = Math.min(1, max / Math.max(w, h));
+  const c = document.createElement("canvas"); c.width = Math.round(w * k); c.height = Math.round(h * k);
+  c.getContext("2d").drawImage(src, 0, 0, c.width, c.height);
+  return { canvas: c, blob: await new Promise((r) => c.toBlob(r, "image/jpeg", q)) };
+}
+async function pickOrderPhoto(file) {
+  if (!sheet || sheet.kind !== "order") return;
+  if (!/^image\//.test(file.type)) { toast("Képfájlt válassz (fotó, vázlat)."); return; }
+  const cloud = CLOUD && sb && store.uid;
+  if (cloud && !online()) { toast("A fotó feltöltéséhez internetkapcsolat kell."); return; }
+  sheet.uploading = true; drawSheet();
+  try {
+    if (cloud) {
+      const { blob } = await resizeImage(file, 1600, 0.8);
+      const path = `${store.uid}/orders/${sheet.newId}-${Date.now().toString(36)}.jpg`;
+      const { error } = await sb.storage.from("documents").upload(path, blob, { contentType: "image/jpeg", upsert: false });
+      if (error) throw error;
+      sheet.uploads.push(path); sheet.data.photo = { path };
+    } else {
+      const { canvas } = await resizeImage(file, 900, 0.72);
+      sheet.data.photo = { dataUrl: canvas.toDataURL("image/jpeg", 0.72) };
+    }
+  } catch (e) { toast("A fotót nem sikerült feltölteni" + (e && e.message ? ": " + e.message : ".")); }
+  if (sheet) { sheet.uploading = false; drawSheet(); }
+}
+function dropPhotos(paths) {
+  const list = [...new Set(paths.filter(Boolean))];
+  if (!list.length || !sb || !online()) return;
+  sb.storage.from("documents").remove(list).catch(() => {});
+}
+function closeSheet() {
+  if (sheet && sheet.kind === "order") dropPhotos(sheet.uploads.filter((x) => x !== sheet.origPhoto));
+  sheet = null; drawSheet();
+}
+function showPhoto(src) {
+  if (!src) return;
+  const v = document.getElementById("viewer"); v.querySelector("img").src = src; v.hidden = false;
+}
+document.getElementById("photoFile").addEventListener("change", (e) => { const f = e.target.files && e.target.files[0]; e.target.value = ""; if (f) pickOrderPhoto(f); });
 document.getElementById("docFile").addEventListener("change", (e) => { const f = e.target.files && e.target.files[0]; e.target.value = ""; if (f) uploadDoc(f); });
 
 /* ---------- Export / import ---------- */
@@ -693,9 +784,9 @@ const q = (v) => '"' + String(v ?? "").replace(/"/g, '""') + '"';
 const csvNum = (n) => String(Math.round(num(n) * 100) / 100).replace(".", ",");
 function csvMonth() {
   const m = stats(ui.month);
-  const lines = ["Tétel;Dátum;Megnevezés;Típus / kategória;Darab;Nettó költség (Ft);Eladási ár / összeg (Ft);Munkaóra;Állapot;Bizonylat;Fizetés módja;Kifizetés napja;Vevő;Csatorna;Megjegyzés"];
-  m.os.sort((a, b) => a.date.localeCompare(b.date)).forEach((o) => lines.push(["Rendelés", o.date, o.product, o.type, o.qty, csvNum(o.cost), csvNum(o.price), csvNum(o.hours), o.status, o.invoiceNo, o.payMethod, o.payDate, o.customer, o.channel, o.note].map(q).join(";")));
-  m.es.sort((a, b) => a.date.localeCompare(b.date)).forEach((e) => lines.push(["Kiadás", e.date, e.note, e.cat, "", "", csvNum(e.amount), "", "", e.docNo, "", "", "", "", ""].map(q).join(";")));
+  const lines = ["Tétel;Dátum;Megnevezés;Típus / kategória;Darab;Nettó költség (Ft);Eladási ár / összeg (Ft);Munkaóra;Állapot;Határidő;Kifizetve;Bizonylat;Fizetés módja;Kifizetés napja;Vevő;Csatorna;Megjegyzés"];
+  m.os.sort((a, b) => a.date.localeCompare(b.date)).forEach((o) => lines.push(["Rendelés", o.date, o.product, o.type, o.qty, csvNum(o.cost), csvNum(o.price), csvNum(o.hours), o.status, o.deadline, o.paid ? "igen" : "nem", o.invoiceNo, o.payMethod, o.payDate, o.customer, o.channel, o.note].map(q).join(";")));
+  m.es.sort((a, b) => a.date.localeCompare(b.date)).forEach((e) => lines.push(["Kiadás", e.date, e.note, e.cat, "", "", csvNum(e.amount), "", "", "", "", e.docNo, "", "", "", "", ""].map(q).join(";")));
   lines.push(""); lines.push(["Bevétel összesen", "", "", "", "", csvNum(m.mat), csvNum(m.rev)].map(q).join(";"));
   lines.push(["Egyéb kiadások", "", "", "", "", "", csvNum(m.exp)].map(q).join(";"));
   lines.push(["Tiszta haszon", "", "", "", "", "", csvNum(m.profit)].map(q).join(";"));
@@ -735,8 +826,8 @@ function sampleData() {
     const d = new Date(now.getFullYear(), now.getMonth() - k, 1), ym = d.getFullYear() + "-" + pad(d.getMonth() + 1);
     [3, 7, 12, 18, 24].forEach((day, j) => {
       const ds = ym + "-" + pad(day); if (ds > TODAY) return; const it = items[(j + k) % items.length];
-      const done = k > 0 || j < 3;
-      o["minta-r-" + ym + "-" + j] = { date: ds, product: it[0], type: it[1], qty: it[2], cost: it[3], price: it[4], hours: it[5], channel: it[6], customer: "", status: done ? "Teljesítve" : STATUSES[j % 2], note: "", invoiceNo: done ? "MINTA-" + String(inv++).padStart(3, "0") : "", payMethod: done ? PAY[j % 3] : "", payDate: done ? ds : "", created: Date.now() + j, sample: true };
+      const done = k > 0 ? j !== 4 : j === 0, status = done ? "Teljesítve" : (j % 2 ? "Elkészült" : "Megrendelve");
+      o["minta-r-" + ym + "-" + j] = { date: ds, deadline: shiftDay(ds, 6 + j), product: it[0], type: it[1], qty: it[2], cost: it[3], price: it[4], hours: it[5], channel: it[6], customer: ["Kiss Anna", "Nagy Eszter", "", "Tóth Réka", ""][j], status, paid: done, note: "", invoiceNo: done ? "MINTA-" + String(inv++).padStart(3, "0") : "", payMethod: done ? PAY[j % 3] : "", payDate: done ? ds : "", photo: null, created: Date.now() + j, sample: true };
     });
     [["Könyvelő", 15000, "havi díj", 5], ["Fonal", 12500, "pamutzsinór 5 mm", 2], ["Energia", 6000, "áram, műhely", 10], ["Csomagolás", 3200, "dobozok, selyempapír", 15]].forEach((x, j) => { const ds = ym + "-" + pad(x[3]); if (ds > TODAY) return; e["minta-k-" + ym + "-" + j] = { date: ds, cat: x[0], amount: x[1], note: x[2], docNo: "", created: Date.now(), sample: true }; });
   }
@@ -746,7 +837,13 @@ function sampleData() {
 /* ---------- Események ---------- */
 const A = {
   tab: (b) => { ui.tab = b.dataset.t; uiConfirm = null; saveUi(); render(true); window.scrollTo(0, 0); },
-  month: (b) => { ui.month = shiftMonth(ui.month, +b.dataset.k); ui.year = +ui.month.slice(0, 4); render(true); },
+  month: (b) => { ui.month = shiftMonth(ui.month, +b.dataset.k); ui.year = +ui.month.slice(0, 4); ui.day = ymOf(TODAY) === ui.month ? TODAY : ui.month + "-01"; render(true); },
+  pickDay: (b) => { ui.day = b.dataset.d; render(true); const t = document.querySelector(".page-title"); if (t) t.scrollIntoView({ behavior: "smooth", block: "start" }); },
+  calBy: (b) => { ui.calBy = b.dataset.v; render(true); },
+  viewPhoto: (b) => showPhoto(b.dataset.src || (b.querySelector("img") || {}).src),
+  closeViewer: () => { document.getElementById("viewer").hidden = true; },
+  pickPhoto: () => document.getElementById("photoFile").click(),
+  removePhoto: () => { if (sheet) { sheet.data.photo = null; drawSheet(); } },
   year: (b) => { ui.year += +b.dataset.k; ui.month = ui.year + ui.month.slice(4); render(true); },
   pickMonth: (b) => { ui.month = b.dataset.m; render(true); window.scrollTo({ top: 0, behavior: "smooth" }); },
   day: (b) => { ui.day = shiftDay(ui.day, +b.dataset.k); ui.month = ymOf(ui.day); render(true); },
@@ -755,10 +852,10 @@ const A = {
   editOrder: (b) => openOrder(b.dataset.id),
   newExp: () => openExp(),
   editExp: (b) => openExp(b.dataset.id),
-  closeSheet: () => { sheet = null; drawSheet(); },
-  closeSheetBg: (b, e) => { if (e.target === b) { sheet = null; drawSheet(); } },
+  closeSheet: () => closeSheet(),
+  closeSheetBg: (b, e) => { if (e.target === b) closeSheet(); },
   askDel: () => { sheetConfirm = true; drawSheet(); },
-  sheetDel: () => { const id = sheet.id; sheet = null; drawSheet(); delRec(id); toast("Törölve"); },
+  sheetDel: () => { const id = sheet.id; if (sheet.kind === "order") dropPhotos([...sheet.uploads, sheet.origPhoto]); sheet = null; drawSheet(); delRec(id); toast("Törölve"); },
   addFixed: () => {
     const s = data().settings, m = stats(ui.month), day = ymOf(TODAY) === ui.month ? TODAY : ui.month + "-01";
     s.fixed.filter((f) => !m.es.some((e) => e.fixedId === f.id)).forEach((f) => setRec(uid("k"), "expense", { date: day, cat: f.cat, amount: num(f.amount), note: f.note || "havi fix", docNo: "", fixedId: f.id, created: Date.now() }, { quiet: true }));
@@ -802,16 +899,16 @@ document.addEventListener("click", (e) => {
 document.getElementById("fab").addEventListener("click", () => { if (ui.tab === "exp") openExp(); else A.newOrder(); });
 document.addEventListener("submit", (e) => { e.preventDefault(); if (e.target.id === "sheetForm") submitSheet(); else if (e.target.id === "authForm") authSubmit(); });
 document.addEventListener("keydown", (e) => {
-  if (e.key === "Escape" && sheet) { sheet = null; drawSheet(); }
+  if (e.key === "Escape") { const v = document.getElementById("viewer"); if (!v.hidden) v.hidden = true; else if (sheet) closeSheet(); }
   if (e.key === "Enter" && e.target.id && e.target.id.startsWith("chip-")) { e.preventDefault(); const b = document.querySelector(`[data-action="chipAdd"][data-list="${e.target.id.slice(5)}"]`); if (b) A.chipAdd(b); }
 });
 let bizT = null, bizDraft = null;
 document.addEventListener("input", (e) => {
   const t = e.target;
   if (t.dataset.f && sheet) {
-    sheet.data[t.dataset.f] = t.value;
+    sheet.data[t.dataset.f] = t.type === "checkbox" ? t.checked : t.value;
+    if (t.dataset.f === "paid" && t.checked && !sheet.data.payDate) setField("payDate", TODAY);
     if (t.dataset.f === "type" || (t.dataset.f === "qty" && sheet.data.type && !sheet.id)) applyType();
-    if (t.dataset.f === "status" && t.value === "Teljesítve" && !sheet.data.payDate) setField("payDate", sheet.data.date || TODAY);
     updPreview(); return;
   }
   if (t.id === "dayInput") { if (t.value) { ui.day = t.value; ui.month = ymOf(ui.day); ui.year = +ui.day.slice(0, 4); t.blur(); render(true); } return; }

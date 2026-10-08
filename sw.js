@@ -2,7 +2,7 @@
 // Az app saját fájljai: hálózat először, offline a mentett másolat.
 // CDN könyvtárak és betűtípusok: mentett másolat először.
 // Supabase (adatok, belépés, dokumentumok): mindig hálózat, sosem kerül gyorsítótárba.
-const CACHE = "smhd-v2.0.1";
+const CACHE = "smhd-v2.1.0";
 const SHELL = [
   "/", "/index.html", "/app.js", "/config.js", "/manifest.webmanifest",
   "/icon-192.png", "/icon-512.png", "/apple-touch-icon.png", "/favicon.png"
