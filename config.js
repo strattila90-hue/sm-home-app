@@ -4,5 +4,5 @@
 // Az "anon / publishable" kulcs nyilvános lehet, az adatokat a sorszintű védelem (RLS) védi.
 window.SMHD_CONFIG = {
   supabaseUrl: "https://dqtpydwvfgsclcscburp.supabase.co",       // pl. "https://abcdefghijkl.supabase.co"
-  supabaseAnonKey: ""    // pl. "eyJhbGciOi..." vagy "sb_publishable_..."
+  supabaseAnonKey: "https://dqtpydwvfgsclcscburp.supabase.co"    // pl. "eyJhbGciOi..." vagy "sb_publishable_..."
 };
