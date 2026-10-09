@@ -9,6 +9,7 @@
 <meta name="theme-color" content="#211a1b" media="(prefers-color-scheme: dark)">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
+<meta name="smhd-shell" content="2.3">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="SM Planner">
 <link rel="manifest" href="/manifest.webmanifest">
@@ -45,7 +46,8 @@ img{max-width:100%}
 .num{font-variant-numeric:tabular-nums}
 
 header.top{padding-block:18px 4px;display:flex;flex-direction:column;gap:2px}
-.brand-row{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.brand-row{display:flex;align-items:center;justify-content:space-between;gap:8px 10px;flex-wrap:wrap}
+.brand-row .top-tools{margin-left:auto}
 .brand{font-family:var(--f-display);font-style:italic;font-weight:600;font-size:clamp(28px,7.6vw,46px);line-height:1;letter-spacing:.01em;margin:0;white-space:nowrap;min-width:0}
 @media (max-width:420px){.status{max-width:40vw;font-size:11px;padding:4px 8px}}
 .brand span{color:var(--rose)}
@@ -133,7 +135,7 @@ header.top{padding-block:18px 4px;display:flex;flex-direction:column;gap:2px}
 .fab svg{width:26px;height:26px}
 
 nav.tabs{position:fixed;left:0;right:0;bottom:0;padding-bottom:env(safe-area-inset-bottom,0px);background:var(--surface);border-top:1px solid var(--line);z-index:30}
-nav.tabs .in{max-width:640px;margin:0 auto;display:grid;grid-template-columns:repeat(6,minmax(0,1fr))}
+nav.tabs .in{max-width:600px;margin:0 auto;display:grid;grid-template-columns:repeat(5,minmax(0,1fr))}
 nav.tabs button{background:none;border:0;padding:10px 2px 9px;display:flex;flex-direction:column;align-items:center;gap:3px;font-size:11px;font-weight:700;color:var(--muted);cursor:pointer;min-width:0}
 nav.tabs button span{max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 nav.tabs button svg{width:22px;height:22px}
@@ -290,6 +292,40 @@ ol.steps{margin:0;padding-left:20px;display:flex;flex-direction:column;gap:6px;f
 .qbtn svg{width:16px;height:16px}
 .qbtn:active{background:var(--rose-soft)}
 @media (max-width:400px){.qty b{min-width:48px;font-size:15px}.qbtn{width:30px;height:30px}}
+
+
+/* 2.3: menü, Új rendelés, Több, Motiváció, Rajztábla */
+nav.tabs .tab-new{color:var(--rose)}
+nav.tabs .tab-new .new-dot{width:40px;height:40px;margin-top:-18px;border-radius:50%;background:var(--rose);color:var(--rose-ink);display:grid;place-items:center;box-shadow:0 6px 16px rgba(120,60,60,.28);border:3px solid var(--surface)}
+nav.tabs .tab-new .new-dot svg{width:22px;height:22px}
+nav.tabs .tab-new[aria-current="page"] span:last-child{font-weight:800}
+.more-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+.more-tile{display:flex;flex-direction:column;align-items:flex-start;gap:6px;text-align:left;padding:16px;border-radius:16px;border:1px solid var(--line);background:var(--surface);cursor:pointer;box-shadow:var(--shadow);min-width:0}
+.more-tile .mi{width:40px;height:40px;border-radius:12px;background:var(--rose-soft);color:var(--rose);display:grid;place-items:center}
+.more-tile .mi svg{width:22px;height:22px}
+.more-tile b{font-size:15px}
+.sheet.inline{max-height:none;overflow:visible;padding:0;border-radius:0;background:none;animation:none}
+.btn.big{padding:14px 26px;font-size:16px}
+.type-chips{gap:8px}
+.tchip{border:1px solid var(--line);background:var(--surface-2);border-radius:999px;padding:8px 14px;font-weight:700;font-size:14px;cursor:pointer}
+.tchip.on{background:var(--rose);color:var(--rose-ink);border-color:var(--rose)}
+details.more{border:1px dashed var(--line);border-radius:14px;padding:12px}
+details.more summary{cursor:pointer;font-weight:800;list-style:revert}
+.hero.quote .q{font-family:var(--f-display);font-style:italic;font-size:clamp(24px,6.5vw,32px);line-height:1.25;margin:8px 0 0;text-wrap:balance}
+textarea.why{min-height:160px;font-size:16px;line-height:1.55}
+.goal{align-items:center}
+.goal.done span{text-decoration:line-through;color:var(--muted)}
+.mnote{white-space:pre-wrap;overflow-wrap:anywhere}
+.range{width:100%;accent-color:var(--rose)}
+.draw-tools{display:flex;flex-direction:column;gap:10px;margin-bottom:10px}
+.pens{display:flex;gap:8px;flex-wrap:wrap}
+.pen{width:32px;height:32px;border-radius:50%;border:2px solid var(--line);cursor:pointer;padding:0}
+.pen.on{outline:3px solid var(--ink);outline-offset:2px}
+.size{width:36px;height:36px;border-radius:50%;border:1px solid var(--line);background:var(--surface-2);display:grid;place-items:center;cursor:pointer;padding:0}
+.size i{display:block;border-radius:50%;background:var(--ink)}
+.size.on{border-color:var(--rose);box-shadow:0 0 0 2px var(--rose-soft)}
+.draw-host{border-radius:12px;overflow:hidden;border:1px solid var(--line);background:#fffaf4}
+canvas.pad{display:block;width:100%;height:auto;touch-action:none;cursor:crosshair}
 
 /* Nyomtatás: csak a kimutatás */
 @media print{

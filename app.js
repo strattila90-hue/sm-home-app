@@ -694,8 +694,17 @@ function vSet() {
     <div class="row"><span>Belépve</span><b style="overflow-wrap:anywhere;text-align:right">${esc(auth.email || "—")}</b></div>
     <div class="row"><span>Állapot</span><span class="num">${esc(document.getElementById("status").textContent)}</span></div>
     ${sync.err ? `<div class="row"><span class="note">${esc(sync.err)}</span></div>` : ""}</div>
-    <div class="btns" style="margin-top:10px"><button type="button" class="btn" data-action="syncNow">Szinkronizálás most</button>
-    ${uiConfirm === "logout" ? `<button type="button" class="btn danger solid" data-action="logout">Kijelentkezés${pend ? ` (${pend} nem mentett tétel elvész)` : ""}</button><button type="button" class="btn" data-action="cancelConfirm">Mégse</button>` : '<button type="button" class="btn danger" data-action="askLogout">Kijelentkezés</button>'}</div></div>`
+    <div class="btns" style="margin-top:10px"><button type="button" class="btn" data-action="syncNow">Szinkronizálás most</button><button type="button" class="btn" data-action="pwOpen">${ui.pwOpen ? "Jelszócsere bezárása" : "Jelszó módosítása"}</button>
+    ${uiConfirm === "logout" ? `<button type="button" class="btn danger solid" data-action="logout">Kijelentkezés${pend ? ` (${pend} nem mentett tétel elvész)` : ""}</button><button type="button" class="btn" data-action="cancelConfirm">Mégse</button>` : '<button type="button" class="btn danger" data-action="askLogout">Kijelentkezés</button>'}</div>
+    ${ui.pwOpen ? `<form id="pwForm" class="stack pw-form" style="gap:10px;margin-top:14px" novalidate autocomplete="on">
+     <input type="email" autocomplete="username" value="${esc(auth.email || "")}" hidden readonly>
+     <div class="field"><label for="pw-old">Jelenlegi jelszó</label><input class="in-ctl" type="password" id="pw-old" autocomplete="current-password"></div>
+     <div class="grid2"><div class="field"><label for="pw-new">Új jelszó</label><input class="in-ctl" type="password" id="pw-new" autocomplete="new-password" placeholder="min. 8 karakter"></div>
+     <div class="field"><label for="pw-new2">Új jelszó még egyszer</label><input class="in-ctl" type="password" id="pw-new2" autocomplete="new-password"></div></div>
+     <label class="switch"><input type="checkbox" id="pw-show"><span>Jelszavak megjelenítése</span></label>
+     <p class="note" id="pwMsg" hidden style="margin:0"></p>
+     <div class="btns"><button class="btn primary" type="submit">Új jelszó mentése</button></div>
+     <p class="note" style="margin:0">Ha a jelenlegi jelszót nem tudod, lépj ki, és a belépésnél használd az „Elfelejtett jelszó” lehetőséget.</p></form>` : ""}</div>`
   : `<div class="card"><div class="section-title">Mentés</div><p class="note" style="margin:0">Helyi mód: az adatok csak ezen a készüléken vannak. Felhős mentéshez töltsd ki a config.js fájlt (lásd README).</p></div>`}
 
   <div class="card"><div class="section-title">Telepítés telefonra</div><div class="stack" style="gap:12px">
@@ -734,7 +743,7 @@ function vSet() {
    <div class="btns"><button type="button" class="btn" data-action="sample">Mintaadatok betöltése</button><button type="button" class="btn" data-action="clearSample">Mintaadatok törlése</button>
    ${uiConfirm === "wipe" ? '<button type="button" class="btn danger solid" data-action="wipe">Igen, minden rendelés és kiadás törlése</button><button type="button" class="btn" data-action="cancelConfirm">Mégse</button>' : '<button type="button" class="btn danger" data-action="askWipe">Minden adat törlése</button>'}</div>
   </div></div>
-  <p class="note" style="text-align:center">SM home dekor Planner · 2.3</p>
+  <p class="note" style="text-align:center">SM home dekor Planner · 2.3.1</p>
   </div>`;
 }
 
@@ -1110,6 +1119,7 @@ const A = {
   wipe: () => { uiConfirm = null; for (const [id, r] of Object.entries(store.recs)) if (r && !r.deleted && (r.kind === "order" || r.kind === "expense")) delRec(id, { quiet: true }); render(true); toast("Minden rendelés és kiadás törölve"); },
   logout: async () => { uiConfirm = null; try { await sb.auth.signOut(); } catch (e) {} store.uid = null; resetStore(); sync.firstDone = false; ui.tab = "home"; render(true); },
   syncNow: () => { if (CLOUD && store.uid) { syncNow(); toast("Szinkronizálás…"); } },
+  pwOpen: () => { ui.pwOpen = !ui.pwOpen; render(true); if (ui.pwOpen) { const el = document.getElementById("pw-old"); if (el) el.focus(); } },
   authMode: (b) => { ui.auth = b.dataset.m; auth.msg = ""; render(true); },
   install: async () => { if (!installEvt) return; installEvt.prompt(); try { await installEvt.userChoice; } catch (e) {} installEvt = null; render(true); },
   copyLink: async () => { try { await navigator.clipboard.writeText(location.origin + "/"); toast("Link másolva"); } catch (e) { toast("Jelöld ki és másold a linket kézzel."); } },
@@ -1127,7 +1137,27 @@ document.addEventListener("click", (e) => {
   f(b, e);
 });
 document.getElementById("fab").addEventListener("click", () => { haptic("tap"); if (ui.tab === "exp") openExp(); else if (ui.tab === "stock") openStock(); else A.newOrder(); });
-document.addEventListener("submit", (e) => { e.preventDefault(); if (e.target.id === "sheetForm") submitSheet(); else if (e.target.id === "authForm") authSubmit(); });
+document.addEventListener("submit", (e) => { e.preventDefault(); if (e.target.id === "sheetForm") submitSheet(); else if (e.target.id === "authForm") authSubmit(); else if (e.target.id === "pwForm") changePassword(); });
+document.addEventListener("change", (e) => { if (e.target.id === "pw-show") ["pw-old", "pw-new", "pw-new2"].forEach((i) => { const el = document.getElementById(i); if (el) el.type = e.target.checked ? "text" : "password"; }); });
+async function changePassword() {
+  const v = (i) => (document.getElementById(i) || {}).value || "", msg = document.getElementById("pwMsg"), btn = document.querySelector("#pwForm button[type=submit]");
+  const say = (t, ok) => { msg.textContent = t; msg.hidden = false; msg.style.color = ok ? "var(--sage)" : "var(--danger)"; };
+  const oldPw = v("pw-old"), p1 = v("pw-new"), p2 = v("pw-new2");
+  if (!sb || !store.uid) return say("Ehhez be kell lépni.");
+  if (!online()) return say("A jelszócseréhez internetkapcsolat kell.");
+  if (!oldPw) return say("Add meg a jelenlegi jelszót.");
+  if (p1.length < 8) return say("Az új jelszó legyen legalább 8 karakter.");
+  if (p1 !== p2) return say("A két új jelszó nem egyezik.");
+  if (p1 === oldPw) return say("Az új jelszó legyen más, mint a mostani.");
+  btn.disabled = true; say("Ellenőrzés…", true);
+  try {
+    const chk = await sb.auth.signInWithPassword({ email: auth.email, password: oldPw });
+    if (chk.error) { btn.disabled = false; return say("A jelenlegi jelszó nem helyes."); }
+    const { error } = await sb.auth.updateUser({ password: p1 });
+    if (error) { btn.disabled = false; return say(/weak|short|least/i.test(error.message) ? "Ez a jelszó túl gyenge, válassz hosszabbat." : /same|different/i.test(error.message) ? "Az új jelszó legyen más, mint a mostani." : "Nem sikerült menteni: " + error.message); }
+    ui.pwOpen = false; render(true); haptic("save"); toast("Új jelszó elmentve. Legközelebb ezzel lépj be.");
+  } catch (x) { btn.disabled = false; say("Nincs kapcsolat a szerverrel. Próbáld újra."); }
+}
 document.addEventListener("keydown", (e) => {
   if (e.key === "Escape") { const v = document.getElementById("viewer"); if (!v.hidden) v.hidden = true; else if (sheet && !sheet.inline) closeSheet(); }
   if (e.key === "Enter" && e.target.id && e.target.id.startsWith("chip-")) { e.preventDefault(); const b = document.querySelector(`[data-action="chipAdd"][data-list="${e.target.id.slice(5)}"]`); if (b) A.chipAdd(b); }
