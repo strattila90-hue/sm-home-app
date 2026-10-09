@@ -46,7 +46,8 @@ img{max-width:100%}
 .num{font-variant-numeric:tabular-nums}
 
 header.top{padding-block:18px 4px;display:flex;flex-direction:column;gap:2px}
-.brand-row{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.brand-row{display:flex;align-items:center;justify-content:space-between;gap:8px 10px;flex-wrap:wrap}
+.brand-row .top-tools{margin-left:auto}
 .brand{font-family:var(--f-display);font-style:italic;font-weight:600;font-size:clamp(28px,7.6vw,46px);line-height:1;letter-spacing:.01em;margin:0;white-space:nowrap;min-width:0}
 @media (max-width:420px){.status{max-width:40vw;font-size:11px;padding:4px 8px}}
 .brand span{color:var(--rose)}
@@ -326,6 +327,9 @@ textarea.why{min-height:160px;font-size:16px;line-height:1.55}
 .draw-host{border-radius:12px;overflow:hidden;border:1px solid var(--line);background:#fffaf4}
 canvas.pad{display:block;width:100%;height:auto;touch-action:none;cursor:crosshair}
 
+/* Előleg */
+.pill.dep{background:var(--sage-soft);color:var(--ink)}
+.dep-box{gap:12px}
 /* Nyomtatás: csak a kimutatás */
 @media print{
   :root{--bg:#fff;--surface:#fff;--ink:#000;--muted:#444;--line:#999;color-scheme:light}

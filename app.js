@@ -416,14 +416,16 @@ function orderCard(o) {
   const p = num(o.price) - num(o.cost), st = orderState(o);
   return `<div class="order-wrap"><button type="button" class="order st-${st}" data-action="editOrder" data-id="${esc(o.id)}">
    <span class="oname">${photoImg(o.photo, "othumb")}<span class="name">${esc(o.product || o.type || "Rendelés")}</span></span><span class="price num">${huf(o.price)}</span>
-   <span class="meta"><span class="pill st-${st}">${esc(STATE[st].label)}</span>${o.type ? `<span class="chip-type">${esc(o.type)}</span>` : ""}<span>${esc(o.status)}</span><span class="num">· ${num(o.qty) || 1} db · ${hrs(o.hours)}</span>${o.deadline ? `<span class="num">· határidő ${esc(dayLabel(o.deadline))}</span>` : ""}${o.customer ? `<span>· ${esc(o.customer)}</span>` : ""}${o.sample ? "<span>· minta</span>" : ""}</span>
+   <span class="meta"><span class="pill st-${st}">${esc(STATE[st].label)}</span>${o.type ? `<span class="chip-type">${esc(o.type)}</span>` : ""}<span>${esc(o.status)}</span><span class="num">· ${num(o.qty) || 1} db · ${hrs(o.hours)}</span>${o.deadline ? `<span class="num">· határidő ${esc(dayLabel(o.deadline))}</span>` : ""}${depositOf(o) && !o.paid ? `<span class="pill dep num">előleg ${huf(depositOf(o))} · hátralék ${huf(dueOf(o))}</span>` : ""}${o.customer ? `<span>· ${esc(o.customer)}</span>` : ""}${o.sample ? "<span>· minta</span>" : ""}</span>
    <span class="profit num ${p < 0 ? "neg" : ""}">${p >= 0 ? "+" : ""}${huf(p)}</span></button><button type="button" class="ox" data-action="delOrder" data-id="${esc(o.id)}" aria-label="${esc(o.product || "Rendelés")} törlése">${I.x}</button></div>`;
 }
+const depositOf = (o) => (o.depositPaid ? Math.max(0, num(o.deposit)) : 0);
+const dueOf = (o) => Math.max(0, num(o.price) - depositOf(o));
 const allOrders = () => Object.entries(data().orders).map(([id, o]) => Object.assign({ id }, o));
 function attention() {
   const os = allOrders().map((o) => Object.assign(o, { st: orderState(o) })).filter((o) => o.st === "late" || o.st === "unpaid");
   os.sort((a, b) => STATE[b.st].rank - STATE[a.st].rank || String(a.deadline || a.date).localeCompare(String(b.deadline || b.date)));
-  return { list: os, late: os.filter((o) => o.st === "late").length, unpaid: os.filter((o) => o.st === "unpaid"), unpaidSum: sum(os.filter((o) => o.st === "unpaid"), "price") };
+  return { list: os, late: os.filter((o) => o.st === "late").length, unpaid: os.filter((o) => o.st === "unpaid"), unpaidSum: os.filter((o) => o.st === "unpaid").reduce((a, o) => a + dueOf(o), 0) };
 }
 function calendar(ym) {
   const [y, m] = ym.split("-").map(Number), by = ui.calBy === "deadline" ? "deadline" : "date";
@@ -447,7 +449,7 @@ function vLog() {
   h += `<div class="stack"><div class="card"><div class="seg" style="margin-bottom:12px"><button type="button" data-action="calBy" data-v="date" aria-pressed="${by === "date"}">Rendelés napja</button><button type="button" data-action="calBy" data-v="deadline" aria-pressed="${by === "deadline"}">Határidő</button></div>
    ${calendar(ui.month)}
    <div class="legend" style="margin-top:12px"><span><i class="dot-done"></i>Kész, fizetve</span><span><i class="dot-open"></i>Folyamatban</span><span><i class="dot-unpaid"></i>Nem fizetett</span><span><i class="dot-late"></i>Lemaradt</span></div></div>`;
-  if (att.list.length) h += `<div class="card"><div class="section-title">Figyelmet igényel</div><div class="rows">${att.list.slice(0, 8).map((o) => `<div class="row tap" data-action="editOrder" data-id="${esc(o.id)}"><div class="l"><span class="pill st-${o.st}">${STATE[o.st].label}</span> <b>${esc(o.product || o.type)}</b><div class="t num">${o.st === "late" ? "határidő: " + esc(dayLabel(o.deadline)) : "rendelve: " + esc(dayLabel(o.date))}${o.customer ? " · " + esc(o.customer) : ""}</div></div><div class="r"><b class="num">${huf(o.price)}</b></div></div>`).join("")}</div>${att.list.length > 8 ? `<p class="note" style="margin:6px 0 0">és még ${att.list.length - 8} tétel</p>` : ""}</div>`;
+  if (att.list.length) h += `<div class="card"><div class="section-title">Figyelmet igényel</div><div class="rows">${att.list.slice(0, 8).map((o) => `<div class="row tap" data-action="editOrder" data-id="${esc(o.id)}"><div class="l"><span class="pill st-${o.st}">${STATE[o.st].label}</span> <b>${esc(o.product || o.type)}</b><div class="t num">${o.st === "late" ? "határidő: " + esc(dayLabel(o.deadline)) : "rendelve: " + esc(dayLabel(o.date))}${o.customer ? " · " + esc(o.customer) : ""}</div></div><div class="r"><b class="num">${huf(dueOf(o))}</b>${depositOf(o) ? `<div class="t num">előleg ${huf(depositOf(o))}</div>` : ""}</div></div>`).join("")}</div>${att.list.length > 8 ? `<p class="note" style="margin:6px 0 0">és még ${att.list.length - 8} tétel</p>` : ""}</div>`;
   const os = allOrders().filter((o) => o[by] === ui.day).sort((a, b) => (a.created || 0) - (b.created || 0));
   const rev = sum(os, "price"), mat = sum(os, "cost"), hh = sum(os, "hours");
   h += `<div><h2 class="page-title" style="margin-top:4px">${esc(dayLabel(ui.day))}<span class="note" style="font-family:var(--f-body);font-size:14px"> · ${esc(weekday(ui.day))}${ui.day === TODAY ? " · ma" : ""}${by === "deadline" ? " · határidős rendelések" : ""}</span></h2></div>`;
@@ -604,11 +606,15 @@ function periodOf(p) {
 }
 function reportRows(per) {
   const biz = data().biz, afa = biz.vat === "afa27";
-  const rows = Object.entries(data().orders).map(([id, o]) => Object.assign({ id }, o))
-    .filter((o) => o.status === "Teljesítve" && o.paid).map((o) => Object.assign(o, { rd: o.payDate || o.date }))
-    .filter((o) => o.rd >= per.from && o.rd <= per.to)
-    .sort((a, b) => a.rd.localeCompare(b.rd) || (a.created || 0) - (b.created || 0));
-  rows.forEach((o, i) => { o.no = i + 1; o.gross = num(o.price); o.net = afa ? Math.round(o.gross / 1.27) : o.gross; o.vat = o.gross - o.net; });
+  // A bevétel a ténylegesen befolyt összeg a befolyás napján: az előleg a saját napján, a hátralék a kifizetéskor kerül be.
+  const rows = [];
+  Object.entries(data().orders).forEach(([id, o]) => {
+    const dep = depositOf(o);
+    if (dep > 0) rows.push(Object.assign({ id }, o, { rd: o.depositDate || o.date, amount: dep, part: "dep", invoiceNo: o.depositInvoice, payMethod: o.depositMethod }));
+    if (o.status === "Teljesítve" && o.paid) { const rest = Math.max(0, num(o.price) - dep); if (rest > 0 || !dep) rows.push(Object.assign({ id }, o, { rd: o.payDate || o.date, amount: rest, part: dep ? "rest" : "full" })); }
+  });
+  rows.splice(0, rows.length, ...rows.filter((o) => o.rd >= per.from && o.rd <= per.to).sort((a, b) => a.rd.localeCompare(b.rd) || (a.created || 0) - (b.created || 0) || (a.part === "dep" ? -1 : 1)));
+  rows.forEach((o, i) => { o.no = i + 1; o.gross = o.amount; o.net = afa ? Math.round(o.gross / 1.27) : o.gross; o.vat = o.gross - o.net; });
   return rows;
 }
 function vNav() {
@@ -636,10 +642,10 @@ function vNav() {
    <h2>Bevételi nyilvántartás</h2><div class="note">${esc(per.label)} · ${fullDate(per.from)} – ${fullDate(per.to.replace(/-31$/, "-" + pad(new Date(+per.to.slice(0, 4), +per.to.slice(5, 7), 0).getDate())))}</div>
    <div class="rep-sum num"><div><small>Tételek</small><b>${rows.length} db</b></div><div><small>${afa ? "Nettó bevétel" : "Bevétel"}</small><b>${huf(tot.net)}</b></div><div><small>${p.kind === "y" ? "Éves összesen" : p.year + " eddig"}</small><b>${huf(ytdSum)}</b></div></div>
    ${rows.length ? `<div class="table-wrap"><table class="num"><thead><tr><th class="l">Ssz.</th><th class="l">Dátum</th><th class="l">Bizonylat</th><th class="l">Megnevezés</th><th class="l">Fiz. mód</th>${afa ? "<th>Nettó</th><th>ÁFA</th><th>Bruttó</th>" : "<th>Bevétel (Ft)</th>"}</tr></thead>
-   <tbody>${rows.map((r) => `<tr><td class="l">${r.no}.</td><td class="l">${fullDate(r.rd)}</td><td class="l ${r.invoiceNo ? "" : "miss"}">${r.invoiceNo ? esc(r.invoiceNo) : "hiányzik"}</td><td class="l tw">${esc(r.product || r.type)}${num(r.qty) > 1 ? ` (${num(r.qty)} db)` : ""}${r.customer ? `<br><span class="note">${esc(r.customer)}</span>` : ""}</td><td class="l">${esc(r.payMethod || "—")}</td>${afa ? `<td>${huf(r.net)}</td><td>${huf(r.vat)}</td><td>${huf(r.gross)}</td>` : `<td>${huf(r.net)}</td>`}</tr>`).join("")}</tbody>
+   <tbody>${rows.map((r) => `<tr><td class="l">${r.no}.</td><td class="l">${fullDate(r.rd)}</td><td class="l ${r.invoiceNo ? "" : "miss"}">${r.invoiceNo ? esc(r.invoiceNo) : "hiányzik"}</td><td class="l tw">${esc(r.product || r.type)}${num(r.qty) > 1 ? ` (${num(r.qty)} db)` : ""}${r.part === "dep" ? ' <span class="pill dep">előleg</span>' : r.part === "rest" ? ' <span class="pill">hátralék</span>' : ""}${r.customer ? `<br><span class="note">${esc(r.customer)}</span>` : ""}</td><td class="l">${esc(r.payMethod || "—")}</td>${afa ? `<td>${huf(r.net)}</td><td>${huf(r.vat)}</td><td>${huf(r.gross)}</td>` : `<td>${huf(r.net)}</td>`}</tr>`).join("")}</tbody>
    <tfoot><tr><td class="l" colspan="5">Összesen</td>${afa ? `<td>${huf(tot.net)}</td><td>${huf(tot.vat)}</td><td>${huf(tot.gross)}</td>` : `<td>${huf(tot.net)}</td>`}</tr></tfoot></table></div>` : '<p class="note">Ebben az időszakban nincs lezárt rendelés.</p>'}
    ${p.kind !== "m" && Object.keys(months).length > 1 ? `<div class="section-title" style="margin-top:16px">Havi bontás</div><div class="table-wrap"><table class="num"><tbody>${Object.entries(months).sort().map(([k, v]) => `<tr><td class="l" style="text-transform:capitalize">${esc(monthLabel(k))}</td><td>${huf(v)}</td></tr>`).join("")}</tbody></table></div>` : ""}
-   <div class="rep-foot"><span>A kimutatás a ténylegesen befolyt, lezárt rendeléseket tartalmazza időrendben${afa ? ", az ÁFA a bruttó összegből 27%-kal visszaszámolva" : ", áfa nélküli összegben"}.</span><span>Készült az SM home dekor Planner alkalmazással. A bevallást nem helyettesíti.</span></div>
+   <div class="rep-foot"><span>A kimutatás a ténylegesen befolyt összegeket tartalmazza időrendben: az előleget a befizetés napján, a hátralékot a kifizetéskor${afa ? ", az ÁFA a bruttó összegből 27%-kal visszaszámolva" : ", áfa nélküli összegben"}.</span><span>Készült az SM home dekor Planner alkalmazással. A bevallást nem helyettesíti.</span></div>
   </article>`;
   return h;
 }
@@ -743,14 +749,14 @@ function vSet() {
    <div class="btns"><button type="button" class="btn" data-action="sample">Mintaadatok betöltése</button><button type="button" class="btn" data-action="clearSample">Mintaadatok törlése</button>
    ${uiConfirm === "wipe" ? '<button type="button" class="btn danger solid" data-action="wipe">Igen, minden rendelés és kiadás törlése</button><button type="button" class="btn" data-action="cancelConfirm">Mégse</button>' : '<button type="button" class="btn danger" data-action="askWipe">Minden adat törlése</button>'}</div>
   </div></div>
-  <p class="note" style="text-align:center">SM home dekor Planner · 2.3.1</p>
+  <p class="note" style="text-align:center">SM home dekor Planner · 2.4</p>
   </div>`;
 }
 
 /* ---------- Lap (rendelés / kiadás) ---------- */
 let sheet = null, sheetConfirm = false;
 function orderSheet(id, date) {
-  const base = { date: date || ui.day, deadline: "", product: "", type: "", qty: 1, cost: "", price: "", hours: "", customer: "", channel: "", status: STATUSES[0], paid: false, note: "", invoiceNo: "", payMethod: "", payDate: "", photo: null };
+  const base = { date: date || ui.day, deadline: "", product: "", type: "", qty: 1, cost: "", price: "", hours: "", customer: "", channel: "", status: STATUSES[0], paid: false, depositPaid: false, deposit: "", depositDate: "", depositMethod: "", depositInvoice: "", note: "", invoiceNo: "", payMethod: "", payDate: "", photo: null };
   const d = Object.assign(base, id ? clone(data().orders[id]) : {});
   return { kind: "order", id: id || null, newId: id || uid("r"), data: d, origPhoto: d.photo && d.photo.path ? d.photo.path : null, uploads: [] };
 }
@@ -787,6 +793,11 @@ function drawSheet() {
      <div class="grid2"><div class="field"><label for="f-hours">Munkaidő (óra)</label><input class="in-ctl num" id="f-hours" inputmode="decimal" data-f="hours" value="${esc(d.hours)}" placeholder="pl. 3,5"></div>
      <div class="field"><label for="f-deadline">Határidő</label><input class="in-ctl" type="date" id="f-deadline" data-f="deadline" value="${esc(d.deadline || "")}"></div></div>
      <div class="field"><label for="f-customer">Vevő (nem kötelező)</label><input class="in-ctl" id="f-customer" data-f="customer" value="${esc(d.customer)}"></div>
+     <div class="fieldset dep-box"><label class="switch"><input type="checkbox" id="f-depositPaid" data-f="depositPaid" ${d.depositPaid ? "checked" : ""}><span><b>Előleget fizetett</b></span></label>
+      ${d.depositPaid ? `<div class="grid2"><div class="field"><label for="f-deposit">Előleg összege (Ft)</label><input class="in-ctl num" id="f-deposit" inputmode="numeric" data-f="deposit" value="${esc(d.deposit || "")}" placeholder="pl. 5000"></div>
+      <div class="field"><label for="f-depositDate">Előleg napja</label><input class="in-ctl" type="date" id="f-depositDate" data-f="depositDate" value="${esc(d.depositDate || "")}"></div></div>
+      <div class="grid2"><div class="field"><label for="f-depositMethod">Fizetés módja</label><select class="in-ctl" id="f-depositMethod" data-f="depositMethod">${opts(PAY, d.depositMethod, "–")}</select></div>
+      <div class="field"><label for="f-depositInvoice">Előleg bizonylata</label><input class="in-ctl" id="f-depositInvoice" data-f="depositInvoice" value="${esc(d.depositInvoice || "")}" placeholder="nem kötelező"></div></div>` : ""}</div>
      <div class="field"><label>Fotó, vázlat vagy inspiráció</label><div class="photo-box">${d.photo ? `<button type="button" class="photo-btn" data-action="viewPhoto" aria-label="Fotó nagyítása">${photoImg(d.photo, "pimg")}</button>` : `<div class="photo-empty">${I.file}</div>`}
       <div class="btns">${sheet.uploading ? '<span class="note">Feltöltés…</span>' : `<button type="button" class="btn small" data-action="pickPhoto">${d.photo ? "Csere" : "Fotó hozzáadása"}</button>${d.photo ? '<button type="button" class="btn small danger" data-action="removePhoto">Eltávolítás</button>' : ""}`}</div></div></div>
      <div class="preview num" id="preview"></div>
@@ -835,7 +846,7 @@ function drawSheet() {
 function updPreview() {
   const el = document.getElementById("preview"); if (!el || !sheet) return; const d = sheet.data;
   const p = num(d.price) - num(d.cost), h = num(d.hours);
-  el.innerHTML = `<span>Haszon: <b>${huf(p)}</b></span><span>Órabér: <b>${h > 0 ? huf(p / h) : "–"}</b></span>${num(d.qty) > 1 ? `<span>Darabonként: <b>${huf(num(d.price) / num(d.qty))}</b></span>` : ""}`;
+  el.innerHTML = `<span>Haszon: <b>${huf(p)}</b></span><span>Órabér: <b>${h > 0 ? huf(p / h) : "–"}</b></span>${num(d.qty) > 1 ? `<span>Darabonként: <b>${huf(num(d.price) / num(d.qty))}</b></span>` : ""}${d.depositPaid && num(d.deposit) > 0 ? `<span>Hátralék: <b>${huf(Math.max(0, num(d.price) - num(d.deposit)))}</b></span>` : ""}`;
 }
 function setField(f, v) { sheet.data[f] = v; const el = document.getElementById("f-" + f); if (el) el.value = v; }
 function applyType() {
@@ -851,7 +862,10 @@ function submitSheet() {
   if (sheet.kind === "order") {
     if (!d.product && !d.type) return fail("Adj meg terméknevet vagy típust.");
     if (d.paid && !d.payDate) d.payDate = TODAY;
-    const o = { date: d.date, deadline: d.deadline || "", paid: !!d.paid, photo: d.photo || null, product: String(d.product || "").trim(), type: d.type || "", qty: num(d.qty) || 1, cost: num(d.cost), price: num(d.price), hours: num(d.hours), customer: String(d.customer || "").trim(), channel: d.channel || "", status: d.status || STATUSES[0], note: String(d.note || "").trim(), invoiceNo: String(d.invoiceNo || "").trim(), payMethod: d.payMethod || "", payDate: d.payDate || "", created: d.created || Date.now() };
+    if (d.depositPaid && !(num(d.deposit) > 0)) return fail("Add meg az előleg összegét, vagy vedd ki a pipát.");
+    if (d.depositPaid && num(d.price) > 0 && num(d.deposit) > num(d.price)) return fail("Az előleg nem lehet több az eladási árnál.");
+    const dep = !!d.depositPaid && num(d.deposit) > 0;
+    const o = { date: d.date, deadline: d.deadline || "", paid: !!d.paid, depositPaid: dep, deposit: dep ? num(d.deposit) : 0, depositDate: dep ? (d.depositDate || TODAY) : "", depositMethod: dep ? (d.depositMethod || "") : "", depositInvoice: dep ? String(d.depositInvoice || "").trim() : "", photo: d.photo || null, product: String(d.product || "").trim(), type: d.type || "", qty: num(d.qty) || 1, cost: num(d.cost), price: num(d.price), hours: num(d.hours), customer: String(d.customer || "").trim(), channel: d.channel || "", status: d.status || STATUSES[0], note: String(d.note || "").trim(), invoiceNo: String(d.invoiceNo || "").trim(), payMethod: d.payMethod || "", payDate: d.payDate || "", created: d.created || Date.now() };
     if (d.sample) o.sample = true;
     const id = sheet.newId, keep = o.photo && o.photo.path;
     dropPhotos([...sheet.uploads, sheet.origPhoto].filter((x) => x && x !== keep));
@@ -986,9 +1000,9 @@ const q = (v) => '"' + String(v ?? "").replace(/"/g, '""') + '"';
 const csvNum = (n) => String(Math.round(num(n) * 100) / 100).replace(".", ",");
 function csvMonth() {
   const m = stats(ui.month);
-  const lines = ["Tétel;Dátum;Megnevezés;Típus / kategória;Darab;Nettó költség (Ft);Eladási ár / összeg (Ft);Munkaóra;Állapot;Határidő;Kifizetve;Bizonylat;Fizetés módja;Kifizetés napja;Vevő;Csatorna;Megjegyzés"];
-  m.os.sort((a, b) => a.date.localeCompare(b.date)).forEach((o) => lines.push(["Rendelés", o.date, o.product, o.type, o.qty, csvNum(o.cost), csvNum(o.price), csvNum(o.hours), o.status, o.deadline, o.paid ? "igen" : "nem", o.invoiceNo, o.payMethod, o.payDate, o.customer, o.channel, o.note].map(q).join(";")));
-  m.es.sort((a, b) => a.date.localeCompare(b.date)).forEach((e) => lines.push(["Kiadás", e.date, e.note, e.cat, "", "", csvNum(e.amount), "", "", "", "", e.docNo, "", "", "", "", ""].map(q).join(";")));
+  const lines = ["Tétel;Dátum;Megnevezés;Típus / kategória;Darab;Nettó költség (Ft);Eladási ár / összeg (Ft);Munkaóra;Állapot;Határidő;Előleg (Ft);Előleg napja;Kifizetve;Bizonylat;Fizetés módja;Kifizetés napja;Vevő;Csatorna;Megjegyzés"];
+  m.os.sort((a, b) => a.date.localeCompare(b.date)).forEach((o) => lines.push(["Rendelés", o.date, o.product, o.type, o.qty, csvNum(o.cost), csvNum(o.price), csvNum(o.hours), o.status, o.deadline, depositOf(o) ? csvNum(depositOf(o)) : "", o.depositDate || "", o.paid ? "igen" : "nem", o.invoiceNo, o.payMethod, o.payDate, o.customer, o.channel, o.note].map(q).join(";")));
+  m.es.sort((a, b) => a.date.localeCompare(b.date)).forEach((e) => lines.push(["Kiadás", e.date, e.note, e.cat, "", "", csvNum(e.amount), "", "", "", "", "", "", e.docNo, "", "", "", "", ""].map(q).join(";")));
   lines.push(""); lines.push(["Bevétel összesen", "", "", "", "", csvNum(m.mat), csvNum(m.rev)].map(q).join(";"));
   lines.push(["Egyéb kiadások", "", "", "", "", "", csvNum(m.exp)].map(q).join(";"));
   lines.push(["Tiszta haszon", "", "", "", "", "", csvNum(m.profit)].map(q).join(";"));
@@ -998,7 +1012,7 @@ function csvReport() {
   const per = periodOf(ui.rep), rows = reportRows(per), afa = data().biz.vat === "afa27", b = data().biz;
   const lines = [[`Bevételi nyilvántartás – ${per.label}`].map(q).join(";"), [b.name, b.owner, "Adószám: " + (b.taxNo || "")].map(q).join(";"), ""];
   lines.push(["Sorszám", "Dátum", "Bizonylat", "Megnevezés", "Darab", "Vevő", "Fizetés módja", ...(afa ? ["Nettó (Ft)", "ÁFA (Ft)", "Bruttó (Ft)"] : ["Bevétel (Ft)"])].map(q).join(";"));
-  rows.forEach((r) => lines.push([r.no, r.rd, r.invoiceNo, r.product || r.type, r.qty, r.customer, r.payMethod, ...(afa ? [r.net, r.vat, r.gross] : [r.net])].map(q).join(";")));
+  rows.forEach((r) => lines.push([r.no, r.rd, r.invoiceNo, (r.product || r.type) + (r.part === "dep" ? " (előleg)" : r.part === "rest" ? " (hátralék)" : ""), r.qty, r.customer, r.payMethod, ...(afa ? [r.net, r.vat, r.gross] : [r.net])].map(q).join(";")));
   lines.push(["Összesen", "", "", "", "", "", "", ...(afa ? [sum(rows, "net"), sum(rows, "vat"), sum(rows, "gross")] : [sum(rows, "net")])].map(q).join(";"));
   return "﻿" + lines.join("\r\n");
 }
@@ -1170,7 +1184,9 @@ document.addEventListener("input", (e) => {
   const t = e.target;
   if (t.dataset.f && sheet) {
     sheet.data[t.dataset.f] = t.type === "checkbox" ? t.checked : t.value;
+    const fe = document.getElementById("formErr"); if (fe) fe.hidden = true;
     if (t.dataset.f === "paid" && t.checked && !sheet.data.payDate) setField("payDate", TODAY);
+    if (t.dataset.f === "depositPaid") { if (t.checked && !sheet.data.depositDate) sheet.data.depositDate = TODAY; drawSheet(); const el = document.getElementById("f-deposit"); if (el) el.focus(); return; }
     if (t.dataset.f === "type" || (t.dataset.f === "qty" && sheet.data.type && !sheet.id)) applyType();
     updPreview(); return;
   }
