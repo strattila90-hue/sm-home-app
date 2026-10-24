@@ -2461,6 +2461,25 @@ html body .parade.dash{display:flex;flex-direction:column;padding:14px 14px 10px
 .dtile:nth-child(2){background:linear-gradient(145deg,#3a86ea,#1b4fb0)}
 .dtile:nth-child(3){background:linear-gradient(145deg,#9560e0,#5b30a6)}
 .dtile:nth-child(4){background:linear-gradient(145deg,#22ad82,#0e6b4f)}
+
+/* v5.72.2 – típusoldalak: görgetés nélküli gépkártya-rács */
+html body .pg:not(:first-child){height:calc(100dvh - var(--hdrb,92px) - var(--tickh,0px) - 26px - env(safe-area-inset-bottom,0px));min-height:430px;display:flex;flex-direction:column;content-visibility:visible}
+.pg:not(:first-child) .typehead{flex:none;display:grid;grid-template-columns:minmax(0,1fr) auto;column-gap:10px;padding:10px 14px;border-radius:20px}
+.pg:not(:first-child) .typehead>*{grid-column:1}
+.pg:not(:first-child) .typehead h2{font-size:clamp(24px,6.5vw,32px)}
+.pg:not(:first-child) .typehead .sil{grid-column:2;grid-row:1/5;width:min(150px,38vw);margin:0;align-self:center}
+.pg:not(:first-child) .counter{margin-top:6px;gap:8px}
+.pg:not(:first-child) .counter .big{font-size:34px}
+.pg:not(:first-child) .counter button{width:38px;height:38px;font-size:22px}
+.pg:not(:first-child) .readyrow{margin-top:6px}
+.vlist{flex:1 1 auto;min-height:0;margin-top:8px;gap:8px;grid-template-columns:repeat(2,minmax(0,1fr));grid-auto-rows:minmax(0,1fr);overflow:hidden auto}
+.vlist[data-d="1"]{grid-template-columns:minmax(0,1fr)}
+.vlist[data-d="4"]{grid-template-columns:repeat(3,minmax(0,1fr))}
+.vlist .vcard{min-height:0;overflow:hidden;align-content:start}
+.vlist .addcard{min-height:0}
+.vlist[data-d="3"] .vcard,.vlist[data-d="4"] .vcard{padding:8px 8px 8px 12px;gap:3px 6px}
+.vlist[data-d="3"] .vcard .reg,.vlist[data-d="4"] .vcard .reg{font-size:22px}
+.vlist[data-d="3"] .vfuel,.vlist[data-d="4"] .vfuel,.vlist[data-d="3"] .vcard .line.mono,.vlist[data-d="4"] .vcard .line.mono{display:none}
 </style>
 
 </head>
@@ -2511,7 +2530,7 @@ const BEAR=`<g>
  <g style="fill:var(--hero-fg)"><path d="M40 63l3 7 3-7zM54 63l3 7 3-7z"/><ellipse cx="50" cy="57" rx="6" ry="4"/></g>
 </g>`;
 const LOGO_FULL=document.getElementById('splashLogo')?.src||'';
-const APP_VER='5.72.1',APP_DATE='2026.10.24.';document.getElementById('spv').textContent='v'+APP_VER;{const hv=document.getElementById('hver');if(hv)hv.textContent='v'+APP_VER}
+const APP_VER='5.72.2',APP_DATE='2026.10.24.';document.getElementById('spv').textContent='v'+APP_VER;{const hv=document.getElementById('hver');if(hv)hv.textContent='v'+APP_VER}
 
 /* ===== típusok és sziluettek (oldalnézet, jobbra néz) ===== */
 const SIL={
@@ -6913,7 +6932,7 @@ function renderTypePage(t){
     <div class="sil">${SIL[t]}</div>
     <div class="counter"><button data-act="minus" data-type="${t}" ${ro()} ${list.length?'':'disabled'} aria-label="Egy ${esc(T.name)} eltávolítása">−</button><span class="big">${list.length}</span><button class="plus" data-act="plus" data-type="${t}" ${ro()} aria-label="Új ${esc(T.name)} hozzáadása">+</button><span class="lab">darab</span></div>
     ${list.length?`<div class="readyrow"><span>${c.ok} hadra fogható</span>${c.limited?`<span>${c.limited} korlátozott</span>`:''}${c.service?`<span>${c.service} szervizben</span>`:''}</div>`:''}</div>
-   <div class="vlist">${cards}<button class="addcard" data-act="plus" data-type="${t}" ${ro()}>+ Új ${esc(T.name)}</button></div>`;
+   <div class="vlist" data-d="${list.length+1<=2?1:list.length+1<=6?2:list.length+1<=12?3:4}">${cards}<button class="addcard" data-act="plus" data-type="${t}" ${ro()}>+ Új ${esc(T.name)}</button></div>`;
 }
 
 /* v5.72.1 – Gépek főoldal: görgetés nélküli díszszemle, a részletek csempékről nyílnak */

@@ -1,5 +1,5 @@
 // Egyszerű offline gyorsítótár az app vázához. Az adatokat a Firebase saját offline tárolója kezeli.
-const CACHE = 'medve-v5.72.1';
+const CACHE = 'medve-v5.72.2';
 const SHELL = ['./', './?src=medve', './index.html', './manifest.webmanifest', './firebase-config.js', './icon-192.png', './icon-512.png', './apple-touch-icon.png', './icon-maskable.png', './badge-96.png', './boot-guard.js'];
 const CDN = 'medve-cdn'; // v5.61: a Firebase-könyvtár (gstatic) másolata – hálózat nélküli induláshoz; frissítéskor NEM törlődik
 const FBV = 'https://www.gstatic.com/firebasejs/10.12.2/';
