@@ -314,7 +314,18 @@ function vAuth() {
     <button class="btn primary wide" type="submit" ${busy}>${m === "signup" ? "Fiók létrehozása" : m === "reset" ? "Link küldése" : "Belépés"}</button>
     <div class="btns" style="justify-content:space-between">
       ${m === "login" ? '<button type="button" class="btn link" data-action="authMode" data-m="signup">Új fiók</button><button type="button" class="btn link" data-action="authMode" data-m="reset">Elfelejtett jelszó</button>' : '<button type="button" class="btn link" data-action="authMode" data-m="login">Vissza a belépéshez</button>'}
-    </div></form>`;
+    </div>
+    ${m === "login" ? '<p class="note" style="margin:0">Nem emlékszel, melyik e-mail címmel regisztráltál? <b>Ne hozz létre új fiókot</b> – az új fiók üres lenne, a régi adatok a régi fiókban maradnak. Szólj annak, aki a rendszert kezeli, ő megkeresi a címet.</p>' : ""}
+    </form>`;
+}
+function authErr(error, pre) {
+  const m = String((error && error.message) || "");
+  if (/registered|already/i.test(m)) return "Ezzel az e-mail címmel már van fiók. Lépj be, vagy használd az Elfelejtett jelszó lehetőséget.";
+  if (/rate limit|too many|security purposes|over_email_send_rate_limit/i.test(m)) return "Rövid időn belül túl sok e-mail ment ki. Várj egy órát, és próbáld újra.";
+  if (/password/i.test(m) && /(weak|short|least|character)/i.test(m)) return "Ez a jelszó túl gyenge, válassz hosszabbat.";
+  if (/invalid.*email|email.*invalid|unable to validate email/i.test(m)) return "Ez az e-mail cím nem érvényes.";
+  if (/network|fetch|failed to/i.test(m)) return "Nincs kapcsolat a szerverrel. Próbáld újra.";
+  return pre + m;
 }
 async function authSubmit() {
   const email = (document.getElementById("au-email") || {}).value, pass = (document.getElementById("au-pass") || {}).value;
@@ -332,13 +343,14 @@ async function authSubmit() {
       auth.busy = false; auth.msg = "";
     } else if (ui.auth === "signup") {
       const { data: d, error } = await sb.auth.signUp({ email: auth.lastEmail, password: pass, options: { emailRedirectTo: location.origin } });
-      if (error) return fail(error.message.includes("registered") ? "Ezzel az e-mail címmel már van fiók. Lépj be." : "A regisztráció nem sikerült: " + error.message);
+      if (error) return fail(authErr(error, "A regisztráció nem sikerült: "));
+      if (d && d.user && Array.isArray(d.user.identities) && d.user.identities.length === 0) { ui.auth = "login"; return fail("Ezzel az e-mail címmel már van fiók, ne hozz létre újat. Lépj be, vagy használd az Elfelejtett jelszó lehetőséget."); }
       if (!d.session) { ui.auth = "login"; return ok("Küldtünk egy megerősítő e-mailt. Kattints a benne lévő linkre, utána lépj be."); }
       auth.busy = false;
     } else if (ui.auth === "reset") {
       const { error } = await sb.auth.resetPasswordForEmail(auth.lastEmail, { redirectTo: location.origin });
-      if (error) return fail("Nem sikerült elküldeni: " + error.message);
-      ui.auth = "login"; return ok("Elküldtük a jelszó-visszaállító linket az e-mail címedre.");
+      if (error) return fail(authErr(error, "Nem sikerült elküldeni: "));
+      ui.auth = "login"; return ok("Ha ezzel az e-mail címmel van fiók, elküldtük a jelszó-visszaállító linket. Nézd meg a spam mappát is.");
     } else if (ui.auth === "newpass") {
       const { error } = await sb.auth.updateUser({ password: pass });
       if (error) return fail("Nem sikerült menteni: " + error.message);
