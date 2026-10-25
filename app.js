@@ -324,7 +324,7 @@ function authErr(error, pre) {
   if (/rate limit|too many|security purposes|over_email_send_rate_limit/i.test(m)) return "Rövid időn belül túl sok e-mail ment ki. Várj egy órát, és próbáld újra.";
   if (/password/i.test(m) && /(weak|short|least|character)/i.test(m)) return "Ez a jelszó túl gyenge, válassz hosszabbat.";
   if (/invalid.*email|email.*invalid|unable to validate email/i.test(m)) return "Ez az e-mail cím nem érvényes.";
-  if (/network|fetch|failed to/i.test(m)) return "Nincs kapcsolat a szerverrel. Próbáld újra.";
+  if (/network|fetch|failed to|timeout|load failed/i.test(m)) return "Nincs kapcsolat a szerverrel. Próbáld újra. (" + m.slice(0, 80) + ")";
   return pre + m;
 }
 async function authSubmit() {
@@ -356,7 +356,7 @@ async function authSubmit() {
       if (error) return fail("Nem sikerült menteni: " + error.message);
       ui.recovery = false; ui.auth = "login"; auth.busy = false; toast("Új jelszó elmentve");
     }
-  } catch (e) { return fail("Nincs kapcsolat a szerverrel. Próbáld újra."); }
+  } catch (e) { return fail("Nincs kapcsolat a szerverrel. Próbáld újra. (" + String((e && e.message) || e).slice(0, 80) + ")"); }
   render(true);
 }
 
