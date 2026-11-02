@@ -4,7 +4,7 @@
 //   háttérben frissítve. Így net nélkül is elindul az app.
 // - A termékfotók bélyegképeit és a felismerő modellt az app maga tárolja (smhd-thumbs, transformers-cache),
 //   ezeket frissítéskor sem töröljük.
-const CACHE = 'smhd-shell-v2.9.0';
+const CACHE = 'smhd-shell-v2.9.1';
 const CDN = 'smhd-cdn-v1';
 const KEEP = [CACHE, CDN, 'smhd-thumbs'];
 const SHELL = ['/', '/index.html', '/app.js', '/config.js', '/manifest.webmanifest', '/icon-192.png', '/icon-512.png', '/apple-touch-icon.png', '/favicon.png'];

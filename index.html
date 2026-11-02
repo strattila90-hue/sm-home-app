@@ -9,7 +9,7 @@
 <meta name="theme-color" content="#211a1b" media="(prefers-color-scheme: dark)">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
-<meta name="smhd-shell" content="2.9">
+<meta name="smhd-shell" content="2.9.1">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="SM Planner">
 <link rel="manifest" href="/manifest.webmanifest">
@@ -579,6 +579,28 @@ details.more summary{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
 .pgrid.tight.pick .pinfo{display:flex}
 .pgrid.tight.pick .pph{border-radius:10px}
 @media (min-width:700px){.olines{display:grid;grid-template-columns:repeat(2,minmax(0,1fr))}}
+
+
+/* 2.9.1: tétel hozzáadása panel */
+.addpanel{margin-top:12px;border-radius:18px;padding:14px;background:linear-gradient(160deg,var(--sage-soft),color-mix(in srgb,var(--sage-soft) 55%,var(--surface)));border:1px solid color-mix(in srgb,var(--sage) 35%,transparent);box-shadow:inset 0 1px 0 rgba(255,255,255,.5)}
+.addpanel-head{display:flex;gap:10px;align-items:center;margin-bottom:12px}
+.addpanel-head b{display:block;font-size:15.5px}
+.addpanel-head div span{display:block;font-size:12.5px;color:var(--muted);line-height:1.35}
+.addpanel-ic{width:38px;height:38px;border-radius:12px;background:var(--sage);color:#fff;display:grid;place-items:center;flex:none;box-shadow:0 4px 10px -3px color-mix(in srgb,var(--sage) 70%,transparent)}
+.addpanel-ic svg{width:20px;height:20px;stroke-width:2.6}
+.addchips{display:flex;flex-wrap:wrap;gap:8px}
+.addchip{display:inline-flex;align-items:center;gap:7px;border:1px solid color-mix(in srgb,var(--sage) 30%,transparent);background:var(--surface);color:var(--ink);border-radius:999px;padding:6px 14px 6px 6px;font-weight:700;font-size:14px;cursor:pointer;min-height:40px;box-shadow:0 1px 2px rgba(40,60,40,.08);transition:transform .1s,background .15s}
+.addchip i{width:26px;height:26px;border-radius:50%;background:var(--sage-soft);color:var(--sage);display:grid;place-items:center;flex:none}
+.addchip i svg{width:14px;height:14px}
+.addchip:active{transform:scale(.96);background:var(--sage-soft)}
+.addbtns{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin-top:12px}
+.addbtn{display:flex;align-items:center;justify-content:center;gap:8px;min-height:48px;border-radius:14px;border:1.5px dashed color-mix(in srgb,var(--sage) 55%,transparent);background:transparent;color:var(--ink);font-weight:800;font-size:14.5px;cursor:pointer}
+.addbtn span{display:grid;place-items:center}
+.addbtn svg{width:20px;height:20px;color:var(--sage)}
+.addbtn.stock{border:0;border-style:solid;background:var(--sage);color:#fff;box-shadow:0 6px 14px -6px color-mix(in srgb,var(--sage) 80%,transparent)}
+.addbtn.stock svg{color:#fff}
+.addbtn:active{transform:scale(.98)}
+@media (prefers-color-scheme:dark){.addpanel-ic{color:#1d241e}.addchip{background:var(--surface-2)}.addbtn.stock{color:#1d241e}.addbtn.stock svg{color:#1d241e}}
 
 /* Nyomtatás: csak a kimutatás */
 @media print{

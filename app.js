@@ -260,7 +260,7 @@ const MORE = [
   ["Vállalkozás", [["biz", "Cég adatai", "Adószám, hivatalos dokumentumok"], ["set", "Beállítások", "Termékárak, mentés, telepítés"]]],
   ["Magamnak", [["motiv", "Motiváció", "Miért csinálom, céljaim"], ["draw", "Rajztábla", "Vázlatok, kikapcsolódás"]]]
 ];
-const SHELL_OK = (document.querySelector('meta[name="smhd-shell"]') || {}).content === "2.9";
+const SHELL_OK = (document.querySelector('meta[name="smhd-shell"]') || {}).content === "2.9.1";
 
 /* ---------- Állapotjelző ---------- */
 function paintStatus() {
@@ -1578,7 +1578,7 @@ function vSet() {
    <div class="btns"><button type="button" class="btn" data-action="sample">Mintaadatok betöltése</button><button type="button" class="btn" data-action="clearSample">Mintaadatok törlése</button>
    ${uiConfirm === "wipe" ? '<button type="button" class="btn danger solid" data-action="wipe">Igen, minden rendelés és kiadás törlése</button><button type="button" class="btn" data-action="cancelConfirm">Mégse</button>' : '<button type="button" class="btn danger" data-action="askWipe">Minden adat törlése</button>'}</div>
   </div></div>
-  <p class="note" style="text-align:center">SM home dekor Planner · 2.9</p>
+  <p class="note" style="text-align:center">SM home dekor Planner · 2.9.1</p>
   </div>`;
 }
 
@@ -1645,9 +1645,11 @@ function drawSheet() {
       <div class="oline-row"><select class="in-ctl" data-li="${i}" data-lf="type" aria-label="Típus">${typeOpts2(l.type)}</select>${stepper(l.qty, `data-action="lineStep" data-i="${i}"`)}</div>
       <div class="oline-row three"><label class="mini">Egységár (Ft)<input class="in-ctl num" data-li="${i}" data-lf="unit" inputmode="numeric" enterkeyhint="done" value="${esc(l.unit)}" placeholder="0"></label><label class="mini">Anyag / db<input class="in-ctl num" data-li="${i}" data-lf="ucost" inputmode="numeric" enterkeyhint="done" value="${esc(l.ucost)}" placeholder="Ft"></label><label class="mini">Óra / db<input class="in-ctl num" data-li="${i}" data-lf="uhours" inputmode="decimal" enterkeyhint="done" value="${esc(l.uhours)}" placeholder="ó"></label></div>
       <div class="oline-sum">${pr ? `<span class="note">Árukészletből · raktáron ${pr.qty === "" || pr.qty == null ? "–" : fmtQty(pr.qty)} db</span>` : "<span></span>"}<span>Összesen: <b class="num" id="lt-${l.id}">${huf(lineTotal(l))}</b></span></div></div>`; }).join("")}</div>
-     <div class="note" style="margin:8px 0 4px">Tétel hozzáadása – koppints a termékre:</div>
-     <div class="chips type-chips">${s.types.map((t) => `<button type="button" class="tchip" data-action="pickType" data-v="${esc(t.name)}">+ ${esc(t.name)}</button>`).join("")}</div>
-     <div class="btns" style="margin-top:8px"><button type="button" class="btn small" data-action="lineAdd">+ Üres tétel</button><button type="button" class="btn small" data-action="linePick">${I.prod.replace("<svg", '<svg width="16" height="16"')} Árukészletből</button></div>
+     <div class="addpanel">
+      <div class="addpanel-head"><span class="addpanel-ic">${I.plus}</span><div><b>Tétel hozzáadása</b><span>Koppints a termékre – az alapárat a Beállításokból tölti</span></div></div>
+      <div class="addchips">${s.types.map((t) => `<button type="button" class="addchip" data-action="pickType" data-v="${esc(t.name)}"><i>${I.plus}</i>${esc(t.name)}</button>`).join("")}</div>
+      <div class="addbtns"><button type="button" class="addbtn" data-action="lineAdd"><span>${I.order}</span>Üres tétel</button><button type="button" class="addbtn stock" data-action="linePick"><span>${I.prod}</span>Árukészletből</button></div>
+     </div>
      <div class="ototal"><span>Rendelés összesen</span><b class="num" id="o-total">${huf(tot.price)}</b></div><datalist id="dl-prod">${names.map((n) => `<option value="${esc(n)}">`).join("")}</datalist></div>
      <div class="field"><label for="f-deadline">Határidő</label><input class="in-ctl" type="date" id="f-deadline" data-f="deadline" value="${esc(d.deadline || "")}"></div>
      <div class="field"><label for="f-customer">Vevő (nem kötelező)</label><input class="in-ctl" id="f-customer" data-f="customer" value="${esc(d.customer)}"></div>
