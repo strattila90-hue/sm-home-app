@@ -2,7 +2,8 @@
 
 Telepíthető webapp (PWA) az SM home dekor makramé vállalkozáshoz:
 napi rendelésnapló, kiadások, havi és éves haszon, vállalkozási adatok
-dokumentumtárral, és NAV bevételi kimutatás a lezárt rendelésekből.
+dokumentumtárral, NAV bevételi kimutatás a lezárt rendelésekből, és fényképes
+árukészlet automatikus színfelismeréssel.
 
 - **Felhős mentés:** Supabase (ingyenes csomag elég). Belépés e-mail + jelszóval,
   az adatok minden eszközön ugyanazok.
@@ -19,8 +20,8 @@ dokumentumtárral, és NAV bevételi kimutatás a lezárt rendelésekből.
 | `app.js` | Az app működése (számítások, szinkron, kimutatás) |
 | `config.js` | **Ide kerül a Supabase címe és kulcsa** |
 | `sw.js` | Offline működés |
-| `manifest.webmanifest`, `icons/` | Telepítés, ikonok |
-| `supabase/schema.sql` | Az adatbázis létrehozása (egyszer kell lefuttatni) |
+| `manifest.webmanifest`, `*.png` | Telepítés, ikonok |
+| `schema.sql` | Az adatbázis létrehozása (egyszer kell lefuttatni) |
 | `vercel.json` | Vercel beállítások |
 
 Nincs build lépés, sima statikus oldal.
@@ -31,7 +32,7 @@ Nincs build lépés, sima statikus oldal.
 
 1. Regisztrálj a **supabase.com** oldalon, majd **New project**.
    Név: `sm-home-dekor`, régió: **Central EU (Frankfurt)**. Az adatbázis jelszót írd fel.
-2. Bal oldalt **SQL Editor → New query**. Másold be a `supabase/schema.sql` teljes tartalmát, majd **Run**.
+2. Bal oldalt **SQL Editor → New query**. Másold be a `schema.sql` teljes tartalmát, majd **Run**.
    Ez létrehozza az adattáblát, a privát dokumentumtárat és a jogosultságokat
    (mindenki csak a saját adatait látja).
 3. **Project Settings → API** (újabb felületen: **Data API** / **API Keys**):
@@ -77,6 +78,30 @@ kikapcsolható, ha nem akarsz megerősítő levelet. Bekapcsolva biztonságosabb
 
 A régi appban: **Beállítások → Biztonsági mentés (JSON)**. Az új appban:
 **Beállítások → Mentés visszatöltése**, és válaszd ki a fájlt.
+
+## Menü (2.5)
+
+Alsó sor: **Főoldal · Naptár · ＋ Új · Árukészlet · Menü**.
+- A középső **＋** gomb megkérdezi, mit rögzítesz: új rendelés, új kiadás, termékfotó
+  a kamerával vagy fotók a galériából.
+- A **Menü** csoportokba rendezve tartalmazza a többit (Kiadások, NAV kimutatás,
+  Alapanyagok, Cég adatai, Beállítások, Motiváció, Rajztábla). Minden aloldal tetején
+  „‹ Menü” vissza gomb van.
+
+## Árukészlet (fényképes)
+
+- **Fotó készítése** (kamera) vagy **Galériából** (egyszerre több kép is).
+- Az app a fotóból felismeri a termék fő színét: a háttér színét kiszűri, a kép közepét
+  erősebben veszi figyelembe. Ha téved, a „módosítás” gombbal a fotón talált színek
+  vagy a színcsaládok közül választhatsz.
+- A **kategóriát a felhasználó adja meg** (alapból: Fülbevalók, Táskák, Egyedi termékek).
+  Új kategória a feltöltéskor vagy a „+ Kategóriák” gombbal vehető fel, ott át is nevezhető.
+- Nézetek: **Szín szerint** (színcsoportok szivárvány-sorrendben) vagy **ABC sorrend**
+  (betűnként csoportosítva, a magyar ábécé szerint, Cs, Sz, Zs is külön betű), plusz kereső.
+- A fotók a privát `documents` tárhely `products/` mappájába kerülnek (nagy kép és
+  bélyegkép). Internet nélkül is lehet fotózni: a kép addig a telefonon marad, és a
+  következő szinkronnál magától feltöltődik.
+- **Adatbázis-módosítás nem kell:** a meglévő `schema.sql` változatlanul jó.
 
 ## Hogyan működik a NAV kimutatás
 

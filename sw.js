@@ -1,6 +1,6 @@
 // SM home dekor Planner – egyszerű offline gyorsítótár az app vázához (hálózat először).
 // Az adatokat a Supabase és az app saját helyi tárolója kezeli, azokat itt nem tároljuk.
-const CACHE = 'smhd-shell-v2.3.1';
+const CACHE = 'smhd-shell-v2.5.0';
 const SHELL = ['/', '/index.html', '/app.js', '/config.js', '/manifest.webmanifest', '/icon-192.png', '/icon-512.png', '/apple-touch-icon.png', '/favicon.png'];
 
 self.addEventListener('install', e => {

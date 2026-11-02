@@ -9,7 +9,7 @@
 <meta name="theme-color" content="#211a1b" media="(prefers-color-scheme: dark)">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
-<meta name="smhd-shell" content="2.3">
+<meta name="smhd-shell" content="2.5">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="SM Planner">
 <link rel="manifest" href="/manifest.webmanifest">
@@ -327,12 +327,101 @@ textarea.why{min-height:160px;font-size:16px;line-height:1.55}
 .draw-host{border-radius:12px;overflow:hidden;border:1px solid var(--line);background:#fffaf4}
 canvas.pad{display:block;width:100%;height:auto;touch-action:none;cursor:crosshair}
 
+
+/* 2.5: átdolgozott menü, egyértelmű gombok, árukészlet */
+.btn{min-height:44px}
+.btn.small{min-height:36px}
+.btn.link{min-height:0}
+.iconbtn{width:44px;height:44px}
+nav.tabs{box-shadow:0 -4px 18px rgba(80,50,40,.06)}
+nav.tabs button{padding:8px 2px 8px;font-size:11.5px;gap:4px;min-height:62px}
+nav.tabs button .ic{width:56px;height:30px;border-radius:999px;display:grid;place-items:center;transition:background .15s}
+nav.tabs button svg{width:23px;height:23px}
+nav.tabs button[aria-current="page"]{color:var(--ink)}
+nav.tabs button[aria-current="page"] .ic{background:var(--rose-soft);color:var(--rose)}
+nav.tabs button[aria-current="page"] span:last-child{font-weight:800}
+nav.tabs .tab-new .new-dot{width:52px;height:52px;margin-top:-26px;border:4px solid var(--surface)}
+nav.tabs .tab-new .new-dot svg{width:26px;height:26px}
+.fab{width:auto;height:52px;border-radius:999px;padding:0 20px 0 16px;display:flex;align-items:center;gap:8px;font-weight:800;font-size:15px}
+.fab svg{width:22px;height:22px}
+.backbar{margin-top:12px}
+.back{display:inline-flex;align-items:center;gap:4px;border:1px solid var(--line);background:var(--surface);border-radius:999px;padding:8px 16px 8px 10px;font-weight:800;font-size:14px;cursor:pointer;min-height:40px;color:var(--ink)}
+.back svg{width:18px;height:18px}
+.more-group{margin-top:18px}
+.more-group:first-of-type{margin-top:6px}
+.more-tile{min-height:112px}
+.more-tile .mi{width:44px;height:44px}
+.quick{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+.qa{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;padding:14px 6px;min-height:92px;border-radius:16px;border:1px solid var(--line);background:var(--surface);cursor:pointer;font-weight:800;font-size:13.5px;text-align:center;box-shadow:var(--shadow);color:var(--ink)}
+.qa .mi{width:40px;height:40px;border-radius:12px;background:var(--rose-soft);color:var(--rose);display:grid;place-items:center}
+.qa .mi svg{width:22px;height:22px}
+.qa .mi,.more-tile .mi{flex:none}
+.kpis.k3{grid-template-columns:repeat(3,minmax(0,1fr))}
+.kpis.k3 .kpi{padding:10px 10px}
+.kpis.k3 .kpi .v{font-size:16px}
+.kpis.k3 .kpi .k{font-size:10px;letter-spacing:.06em}
+.qa.sage .mi{background:var(--sage-soft);color:var(--sage)}
+.qa.cord .mi{background:var(--cord-soft);color:var(--ink)}
+.choose{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+.choose .qa{min-height:120px;font-size:15px;align-items:flex-start;text-align:left;padding:16px}
+.choose .qa .note{font-weight:600;font-size:12.5px}
+/* Árukészlet */
+.add2{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+.addbig{display:flex;align-items:center;justify-content:center;gap:10px;min-height:60px;border-radius:16px;border:0;background:var(--rose);color:var(--rose-ink);font-weight:800;font-size:15.5px;cursor:pointer;box-shadow:0 6px 16px rgba(120,60,60,.18);padding:10px}
+.addbig.alt{background:var(--surface);color:var(--ink);border:1px solid var(--line);box-shadow:var(--shadow)}
+.addbig svg{width:24px;height:24px;flex:none}
+.searchbox{position:relative}
+.searchbox svg{position:absolute;left:12px;top:50%;transform:translateY(-50%);width:18px;height:18px;color:var(--muted);pointer-events:none}
+.searchbox .in-ctl{padding-left:38px}
+.catchips{display:flex;gap:8px;overflow-x:auto;padding-bottom:4px;scrollbar-width:none;-webkit-overflow-scrolling:touch}
+.catchips::-webkit-scrollbar{display:none}
+.catchips .tchip{flex:none;min-height:40px;white-space:nowrap}
+.catchips .tchip small{opacity:.75;font-weight:700;margin-left:4px}
+.toolrow{display:flex;gap:10px;align-items:center;justify-content:space-between;flex-wrap:wrap}
+.pgroup{margin-top:14px}
+.pgroup h3{display:flex;align-items:center;gap:8px;font-size:15px;font-weight:800;margin:0 0 8px}
+.pgroup h3 .cnt{font-size:12px;color:var(--muted);font-weight:700}
+.pgroup h3.letter{font-family:var(--f-display);font-size:26px;font-weight:600;line-height:1}
+.pgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(148px,1fr));gap:10px}
+.pcard{display:flex;flex-direction:column;border:1px solid var(--line);border-radius:16px;background:var(--surface);overflow:hidden;padding:0;cursor:pointer;text-align:left;min-width:0;position:relative;color:var(--ink);box-shadow:var(--shadow)}
+.pcard .pph{aspect-ratio:1/1;width:100%;background:var(--cord-soft);display:grid;place-items:center;color:var(--muted);overflow:hidden}
+.pcard .pph img{width:100%;height:100%;object-fit:cover;display:block}
+.pcard .pph svg{width:30px;height:30px}
+.pcard .pinfo{padding:8px 10px 10px;display:flex;flex-direction:column;gap:2px;min-width:0}
+.pcard .pinfo b{font-size:14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.pcard .pmeta{font-size:12px;color:var(--muted);display:flex;align-items:center;gap:6px;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.pcard .pprice{font-size:13px;font-weight:800}
+.pcard .badge{position:absolute;top:8px;right:8px;background:rgba(30,20,20,.72);color:#fff;font-size:12px;font-weight:800;border-radius:999px;padding:3px 9px}
+.pcard .badge.zero{background:var(--danger)}
+.sw{display:inline-block;width:14px;height:14px;border-radius:50%;flex:none;border:1px solid rgba(0,0,0,.15);vertical-align:-2px}
+.sw.big{width:22px;height:22px}
+.sw.tarka{background:conic-gradient(#d23b3b,#e9c93c,#5d9a5b,#3f6fc4,#8a5bc0,#d23b3b)!important}
+.famchips{display:flex;flex-wrap:wrap;gap:6px}
+.famchip{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line);background:var(--surface-2);border-radius:999px;padding:6px 12px 6px 8px;font-weight:700;font-size:13px;cursor:pointer;min-height:36px;color:var(--ink)}
+.famchip.on{border-color:var(--ink);box-shadow:0 0 0 2px var(--ink) inset}
+.newrows{display:flex;flex-direction:column;gap:10px}
+.newrow{display:grid;grid-template-columns:84px minmax(0,1fr) auto;gap:10px;align-items:start;border:1px solid var(--line);border-radius:14px;padding:10px;background:var(--surface-2)}
+.newrow img{width:84px;height:84px;border-radius:10px;object-fit:cover;display:block}
+.newrow .fields{display:flex;flex-direction:column;gap:6px;min-width:0}
+.newrow .fields .in-ctl{padding:8px 10px;font-size:15px}
+.newrow .mini{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px}
+.colorline{display:flex;align-items:center;gap:6px;font-size:13px;font-weight:700;flex-wrap:wrap}
+.colorline button{border:0;background:none;color:var(--rose);font-weight:800;text-decoration:underline;cursor:pointer;padding:2px;font-size:13px}
+.prod-hero{width:100%;max-height:34vh;object-fit:contain;border-radius:14px;background:var(--cord-soft);display:block;cursor:zoom-in}
+.busy{display:flex;align-items:center;gap:10px;font-weight:700;font-size:14px;color:var(--muted)}
+.busy i{width:18px;height:18px;border-radius:50%;border:3px solid var(--rose-soft);border-top-color:var(--rose);animation:spin .8s linear infinite;flex:none}
+@keyframes spin{to{transform:rotate(360deg)}}
+.catedit{display:flex;gap:8px;align-items:center;padding:6px 0;border-bottom:1px dashed var(--line)}
+.catedit .in-ctl{flex:1}
+.catedit .t{font-size:12px;color:var(--muted);white-space:nowrap}
+@media (max-width:380px){.quick .qa{font-size:12.5px}.choose .qa{min-height:104px}.addbig{font-size:14px}}
+
 /* Nyomtatás: csak a kimutatás */
 @media print{
   :root{--bg:#fff;--surface:#fff;--ink:#000;--muted:#444;--line:#999;color-scheme:light}
   @page{size:A4;margin:14mm}
   body{font-size:11pt}
-  header.top,nav.tabs,.fab,.noprint,#toast,#sheet,#viewer{display:none!important}
+  header.top,nav.tabs,.fab,.noprint,#toast,#sheet,#modal,#viewer{display:none!important}
   .wrap{max-width:none;padding:0}
   .report{border:0;box-shadow:none;padding:0}
   .table-wrap{overflow:visible}
@@ -350,7 +439,7 @@ canvas.pad{display:block;width:100%;height:auto;touch-action:none;cursor:crossha
       <h1 class="brand">SM <span>home</span> dekor</h1>
       <div class="top-tools">
         <button class="status" id="status" data-action="syncNow" type="button"><i></i><span>Betöltés…</span></button>
-        <button class="iconbtn" id="gear" data-action="tab" data-t="set" aria-label="Beállítások" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h10M18 7h2M4 17h4M12 17h8"/><circle cx="16" cy="7" r="2"/><circle cx="10" cy="17" r="2"/></svg></button>
+        <button class="iconbtn" id="gear" data-action="tab" data-t="set" aria-label="Beállítások" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg></button>
       </div>
     </div>
     <svg class="cord" viewBox="0 0 600 34" preserveAspectRatio="none" aria-hidden="true">
@@ -366,14 +455,17 @@ canvas.pad{display:block;width:100%;height:auto;touch-action:none;cursor:crossha
   </header>
   <main id="main"><div class="card empty"><h3>Betöltés…</h3><p>Egy pillanat, előkészítem a naplót.</p></div></main>
 </div>
-<button class="fab" id="fab" hidden aria-label="Új rendelés" type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></button>
+<button class="fab" id="fab" hidden type="button"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg><span id="fabLbl">Új</span></button>
 <nav class="tabs" id="tabsNav" aria-label="Fő menü" hidden><div class="in" id="tabs"></div></nav>
 <div id="sheet"></div>
+<div id="modal"></div>
 <div id="toast" class="toast" hidden role="status"></div>
 <input type="file" id="importFile" accept="application/json,.json" hidden>
 <input type="file" id="docFile" accept="image/*,application/pdf" hidden>
 <input type="file" id="photoFile" accept="image/*" hidden>
-<div class="viewer" id="viewer" hidden data-action="closeViewer"><img alt="Rendelés fotója"><button type="button" class="iconbtn" data-action="closeViewer" aria-label="Bezárás"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div>
+<input type="file" id="prodCam" accept="image/*" capture="environment" hidden>
+<input type="file" id="prodGal" accept="image/*" multiple hidden>
+<div class="viewer" id="viewer" hidden data-action="closeViewer"><img alt="Fotó nagyítva"><button type="button" class="iconbtn" data-action="closeViewer" aria-label="Bezárás"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div>
 
 <script src="/config.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
