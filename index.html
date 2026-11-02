@@ -9,7 +9,7 @@
 <meta name="theme-color" content="#211a1b" media="(prefers-color-scheme: dark)">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
-<meta name="smhd-shell" content="2.6">
+<meta name="smhd-shell" content="2.7">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
 <meta name="apple-mobile-web-app-title" content="SM Planner">
 <link rel="manifest" href="/manifest.webmanifest">
@@ -497,6 +497,55 @@ details.more summary{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
 .colorjump::-webkit-scrollbar{display:none}
 .colorjump button{flex:none;display:inline-flex;align-items:center;gap:5px;border:1px solid var(--line);background:var(--surface);border-radius:999px;padding:5px 10px 5px 6px;font-size:12px;font-weight:800;cursor:pointer;color:var(--ink);min-height:34px}
 .shelf-mark{scroll-margin-top:12px}
+
+
+/* 2.7: folyamatjelző, görgetőcsúszka, gyorsabb görgetés, táblagép */
+.pgrid2>div+div{margin-top:12px}
+@media (min-width:900px){.pgrid2>div+div{margin-top:0}}
+.pbar{background:var(--surface-2);border:1px solid var(--line);border-radius:12px;padding:10px 12px}
+.pbar-top{display:flex;justify-content:space-between;gap:10px;font-size:13.5px;font-weight:700;margin-bottom:6px}
+.pbar-top b{color:var(--rose);font-size:15px}
+.pbar-track{height:8px;border-radius:999px;background:var(--cord-soft);overflow:hidden}
+.pbar-track b{display:block;height:100%;background:var(--rose);border-radius:999px;transition:width .25s}
+.sheet{overscroll-behavior:contain;-webkit-overflow-scrolling:touch}
+.shelf,.pgroup{content-visibility:auto;contain-intrinsic-size:auto 220px}
+.ncard{content-visibility:auto;contain-intrinsic-size:auto 520px}
+.fs{position:fixed;width:30px;z-index:70;pointer-events:none}
+.fs[hidden]{display:none}
+.fs-thumb{position:absolute;right:0;top:0;width:30px;display:flex;justify-content:flex-end;pointer-events:auto;touch-action:none;cursor:grab;padding-right:3px}
+.fs-thumb i{display:block;width:6px;height:100%;border-radius:999px;background:var(--muted);opacity:.45;transition:opacity .2s,width .15s}
+.fs.on .fs-thumb i{opacity:.75}
+.fs.drag .fs-thumb i{width:10px;opacity:1;background:var(--rose)}
+.fs-bubble{position:absolute;right:38px;top:0;white-space:nowrap;background:var(--ink);color:var(--bg);font-weight:800;font-size:14px;padding:7px 14px;border-radius:999px;box-shadow:var(--shadow)}
+@media (hover:hover){.sheet::-webkit-scrollbar{width:10px}.sheet::-webkit-scrollbar-thumb{background:var(--cord);border-radius:999px}}
+/* Táblagép (fektetve) és nagy képernyő */
+@media (min-width:700px){
+  .wrap{max-width:980px;padding-inline:24px}
+  .sheet.wide{max-width:920px}
+  .ncards{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
+  .more-grid{grid-template-columns:repeat(4,minmax(0,1fr))}
+  .kpis{grid-template-columns:repeat(3,minmax(0,1fr))}
+  .choose{grid-template-columns:repeat(4,minmax(0,1fr))}
+  .sheet{max-width:720px}
+  .fab{right:calc(50% - 466px)}
+}
+@media (min-width:900px){
+  nav.tabs{top:0;bottom:0;right:auto;width:96px;border-top:0;border-right:1px solid var(--line);padding:0;box-shadow:4px 0 18px rgba(80,50,40,.05);display:flex;align-items:center}
+  nav.tabs .in{display:flex!important;flex-direction:column;gap:6px;width:100%;max-width:none}
+  nav.tabs button{min-height:72px}
+  nav.tabs .tab-new .new-dot{margin-top:0}
+  body{padding-left:96px}
+  .wrap{max-width:1240px;padding-bottom:60px}
+  .toast{bottom:28px;margin-left:48px}
+  .fab{bottom:28px;right:28px}
+  .kpis{grid-template-columns:repeat(6,minmax(0,1fr))}
+  .quick{max-width:720px}
+  .ncards{grid-template-columns:repeat(3,minmax(0,1fr))}
+  .sheet.wide{max-width:1100px}
+  .sheet.full.prodsheet{max-width:1000px}
+  .prodsheet .pgrid2{display:grid;grid-template-columns:minmax(0,1.1fr) minmax(0,1fr);gap:18px;align-items:start}
+  .prodsheet .hero-img img{max-height:70dvh}
+}
 
 /* Nyomtatás: csak a kimutatás */
 @media print{

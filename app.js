@@ -256,7 +256,7 @@ const MORE = [
   ["Vállalkozás", [["biz", "Cég adatai", "Adószám, hivatalos dokumentumok"], ["set", "Beállítások", "Termékárak, mentés, telepítés"]]],
   ["Magamnak", [["motiv", "Motiváció", "Miért csinálom, céljaim"], ["draw", "Rajztábla", "Vázlatok, kikapcsolódás"]]]
 ];
-const SHELL_OK = (document.querySelector('meta[name="smhd-shell"]') || {}).content === "2.6";
+const SHELL_OK = (document.querySelector('meta[name="smhd-shell"]') || {}).content === "2.7";
 
 /* ---------- Állapotjelző ---------- */
 function paintStatus() {
@@ -730,11 +730,15 @@ function famOf(r, g, b) {
   return "rozsa";
 }
 /* Fő szín: a háttér (a kép szélein uralkodó szín) kiszűrése, a kép közepe nagyobb súllyal */
-function analyzeColors(src) {
+function smallPixels(src) {
   const S = 80, k = S / Math.max(src.width, src.height), w = Math.max(8, Math.round(src.width * k)), h = Math.max(8, Math.round(src.height * k));
   const c = document.createElement("canvas"); c.width = w; c.height = h;
   const cx = c.getContext("2d", { willReadFrequently: true }); cx.drawImage(src, 0, 0, w, h);
-  const px = cx.getImageData(0, 0, w, h).data, B = Math.max(2, Math.round(Math.min(w, h) * 0.07));
+  return { w, h, data: cx.getImageData(0, 0, w, h).data };
+}
+function analyzeColors(src) {
+  const sp = src.data ? src : smallPixels(src), w = sp.w, h = sp.h;
+  const px = sp.data, B = Math.max(2, Math.round(Math.min(w, h) * 0.07));
   const buckets = {}; let bn = 0;
   for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
     if (x >= B && x < w - B && y >= B && y < h - B) continue;
@@ -826,7 +830,7 @@ function aiStatus() {
   if (ai.st === "error") return "Hiba: " + (ai.err ? ai.err.title : "");
   return "Bekapcsolva (első használatkor töltődik le)";
 }
-const aiPaint = () => document.querySelectorAll(".ai-st").forEach((el) => { el.textContent = aiStatus(); });
+const aiPaint = () => { document.querySelectorAll(".ai-st").forEach((el) => { el.textContent = aiStatus(); }); if (modal && modal.kind === "prodNew") pnUpdate(modal); };
 function aiLoad() {
   if (ai.p) return ai.p;
   ai.st = "loading"; ai.pct = 0; ai.err = null; aiPaint();
@@ -873,7 +877,7 @@ function prodFiltered() {
   const cat = ui.prodCat || "all", q = String(ui.prodQ || "").trim().toLocaleLowerCase("hu-HU");
   return prodList().filter((p) => (cat === "all" || p.cat === cat) && (!q || [p.name, p.cat, p.note, famName(p.fam), shadeName(p), typeName(p.type)].join(" ").toLocaleLowerCase("hu-HU").includes(q)));
 }
-const shelfCols = () => { const w = Math.min(window.innerWidth, 720); return ui.prodView === "grid" ? (w < 400 ? 4 : w < 600 ? 5 : 6) : (w < 430 ? 3 : 4); };
+const shelfCols = () => { const m = document.getElementById("main"), w = (m && m.clientWidth) || window.innerWidth; return ui.prodView === "grid" ? (w < 400 ? 4 : w < 600 ? 5 : w < 900 ? 7 : 9) : (w < 400 ? 3 : w < 640 ? 4 : w < 900 ? 5 : w < 1150 ? 6 : 7); };
 function prodImg(ph) { return !ph ? `<span class="noimg">${I.gal}</span>` : ph.dataUrl ? `<img src="${ph.dataUrl}" alt="" loading="lazy">` : `<img data-thumb="${esc(ph.thumb || ph.path)}" alt="" loading="lazy" hidden><span class="noimg">${I.gal}</span>`; }
 function prodCard(p) {
   const qty = p.qty === "" || p.qty == null ? null : num(p.qty);
@@ -979,42 +983,43 @@ function shadeChooser(d, attr) {
    <div class="note" style="margin-top:6px">Kiválasztva: <b>${esc(shadeName(d))}</b> (${esc(famName(d.fam))})</div>`;
 }
 const stepper = (val, attr) => `<div class="step"><button type="button" ${attr} data-k="-1" aria-label="Kevesebb">${I.minus}</button><b class="num">${val === "" || val == null ? "–" : fmtQty(val)}</b><button type="button" ${attr} data-k="1" aria-label="Több">${I.plus}</button></div>`;
+function ncardHtml(it) {
+  if (it.err) return `<div class="ncard bad" id="nc-${it.key}">${errBox(it.err, `<div class="btns"><span class="note">${esc(it.fname)}</span><button type="button" class="btn small" data-action="pnDel" data-k="${it.key}">Kivétel</button></div>`)}</div>`;
+  return `<div class="ncard" id="nc-${it.key}">
+      <div class="nimg"><img src="${it.url}" alt="" decoding="async" data-action="pnZoom" data-k="${it.key}"><button type="button" class="nx" data-action="pnDel" data-k="${it.key}" aria-label="Kép kivétele">${I.x}</button>
+       <span class="nbadges"><button type="button" class="nbadge" data-action="pnColor" data-k="${it.key}">${swatch(it.fam, it.hex)}${esc(SH[it.shade] ? SH[it.shade].n : famName(it.fam))} ▾</button>${it.ai === "run" || it.ai === "wait" ? '<span class="nbadge"><i class="dot-spin"></i>felismerés…</span>' : it.type ? `<span class="nbadge">${esc(TYPE[it.type].n)}${it.typeP ? ` · ${it.typeP}%` : ""}</span>` : ""}</span></div>
+      ${it.open ? `<div class="nsub">${shadeChooser(it, `data-action="pnShade" data-k="${it.key}"`)}</div>` : ""}
+      <div class="nbody"><input class="in-ctl" id="pn-name-${it.key}" data-pk="${it.key}" data-pf="name" value="${esc(it.name)}" placeholder="${esc(autoName(it, it.cat))}" enterkeyhint="done" aria-label="Név (nem kötelező)">
+       <div class="nrow"><select class="in-ctl" data-pk="${it.key}" data-pf="cat" aria-label="Kategória">${catOpts(it.cat)}</select><select class="in-ctl" data-pk="${it.key}" data-pf="type" aria-label="Terméktípus">${typeOpts(it.type)}</select></div>
+       <div class="nrow"><div class="lbl">Darab ${stepper(it.qty, `data-action="pnStep" data-k2="${it.key}"`)}</div><input class="in-ctl num" id="pn-price-${it.key}" data-pk="${it.key}" data-pf="price" value="${esc(it.price)}" inputmode="numeric" enterkeyhint="done" placeholder="Ár, Ft" aria-label="Eladási ár"></div></div></div>`;
+}
 const MV = {
   choose: () => `<div class="sheet" role="dialog" aria-modal="true">${mhead(modal.prodOnly ? "Termék hozzáadása" : "Mit szeretnél rögzíteni?")}
     <div class="choose">${modal.prodOnly ? "" : `<button type="button" class="qa" data-action="newOrder"><span class="mi">${I.order}</span>Új rendelés<span class="note">Termék, ár, határidő, vevő</span></button><button type="button" class="qa sage" data-action="newExp"><span class="mi">${I.exp}</span>Új kiadás<span class="note">Fonal, posta, könyvelő…</span></button>`}
     <button type="button" class="qa cord" data-action="prodCam"><span class="mi">${I.cam}</span>Termék fotózása<span class="note">A kamera azonnal megnyílik</span></button><button type="button" class="qa cord" data-action="prodGal"><span class="mi">${I.gal}</span>Fotók a galériából<span class="note">Egyszerre több kép is</span></button></div></div>`,
   prodNew: () => {
-    const m = modal, ok = m.items.filter((x) => !x.err), bad = m.items.filter((x) => x.err), saving = m.saving != null, aiRun = m.items.some((x) => x.ai === "wait" || x.ai === "run");
-    return `<form class="sheet full" id="modalForm" role="dialog" aria-modal="true" novalidate>${mhead(ok.length > 1 ? `${ok.length} új termék` : "Új termék", aiOn() ? `Termékfelismerés: <span class="ai-st">${esc(aiStatus())}</span>` : "")}
+    const m = modal, saving = m.saving != null;
+    return `<form class="sheet full wide" id="modalForm" role="dialog" aria-modal="true" novalidate>${mhead(`<span id="pnTitle">${pnTitle(m)}</span>`, aiOn() ? `Termékfelismerés: <span class="ai-st">${esc(aiStatus())}</span>` : "")}
      <div class="field"><label>Kategória mindegyik képre</label><div class="catchips">${prodCats().map((c) => `<button type="button" class="tchip ${m.cat === c ? "on" : ""}" data-action="pnCatAll" data-v="${esc(c)}">${esc(c)}</button>`).join("")}<button type="button" class="tchip ghost" data-action="pnCatNew">+ Új</button></div></div>
-     ${m.busy ? `<div class="busy"><i></i>Képek feldolgozása, színek felismerése… (${m.busy} hátra)</div>` : ""}
-     ${aiRun && ai.st === "loading" ? `<div class="busy"><i></i>Termékfelismerő letöltése (egyszeri): <span class="ai-st">${esc(aiStatus())}</span></div>` : ""}
-     ${ai.st === "error" && aiOn() && ai.err ? errBox(ai.err, '<div class="btns"><button type="button" class="btn small" data-action="aiRetry">Újrapróbálás</button></div>') : ""}
-     ${bad.map((it) => `<div class="ncard bad">${errBox(it.err, `<div class="btns"><span class="note">${esc(it.fname)}</span><button type="button" class="btn small" data-action="pnDel" data-k="${it.key}">Kivétel</button></div>`)}</div>`).join("")}
-     <div class="ncards">${ok.map((it) => `<div class="ncard">
-      <div class="nimg"><img src="${it.url}" alt="" data-action="pnZoom" data-k="${it.key}"><button type="button" class="nx" data-action="pnDel" data-k="${it.key}" aria-label="Kép kivétele">${I.x}</button>
-       <span class="nbadges"><button type="button" class="nbadge" data-action="pnColor" data-k="${it.key}">${swatch(it.fam, it.hex)}${esc(SH[it.shade] ? SH[it.shade].n : famName(it.fam))} ▾</button>${it.ai === "run" || it.ai === "wait" ? '<span class="nbadge"><i class="dot-spin"></i>felismerés…</span>' : it.type ? `<span class="nbadge">${esc(TYPE[it.type].n)}${it.typeP ? ` · ${it.typeP}%` : ""}</span>` : ""}</span></div>
-      ${it.open ? `<div class="nsub">${shadeChooser(it, `data-action="pnShade" data-k="${it.key}"`)}</div>` : ""}
-      <div class="nbody"><input class="in-ctl" id="pn-name-${it.key}" data-pk="${it.key}" data-pf="name" value="${esc(it.name)}" placeholder="${esc(autoName(it, it.cat))}" enterkeyhint="done" aria-label="Név (nem kötelező)">
-       <div class="nrow"><select class="in-ctl" data-pk="${it.key}" data-pf="cat" aria-label="Kategória">${catOpts(it.cat)}</select><select class="in-ctl" data-pk="${it.key}" data-pf="type" aria-label="Terméktípus">${typeOpts(it.type)}</select></div>
-       <div class="nrow"><div class="lbl">Darab ${stepper(it.qty, `data-action="pnStep" data-k2="${it.key}"`)}</div><input class="in-ctl num" id="pn-price-${it.key}" data-pk="${it.key}" data-pf="price" value="${esc(it.price)}" inputmode="numeric" enterkeyhint="done" placeholder="Ár, Ft" aria-label="Eladási ár"></div></div></div>`).join("")}</div>
+     <div id="pnBusy" class="stack" style="gap:8px">${pnBusyHtml(m)}</div>
+     <div class="ncards" id="pnCards">${m.items.map(ncardHtml).join("")}</div>
      <div class="btns"><button type="button" class="btn small" data-action="prodCam">${I.cam.replace("<svg", '<svg width="16" height="16"')} Még fotó</button><button type="button" class="btn small" data-action="prodGal">${I.gal.replace("<svg", '<svg width="16" height="16"')} Galériából</button></div>
      <p class="note" style="margin:0">A név nem kötelező: üresen hagyva szín és típus alapján kap nevet (a mezőben halványan látod).</p>
      <p class="note" id="mErr" hidden style="color:var(--danger);margin:0"></p>
-     <div class="sticky-save"><button type="button" class="btn" data-action="closeModal" ${saving ? "disabled" : ""}>Mégse</button><button class="btn primary big" type="submit" ${m.busy || saving || !ok.length ? "disabled" : ""}>${saving ? `Mentés… ${m.saving}/${ok.length}` : ok.length > 1 ? `${ok.length} termék mentése` : "Termék mentése"}</button></div></form>`;
+     <div class="sticky-save"><button type="button" class="btn" data-action="closeModal" ${saving ? "disabled" : ""}>Mégse</button><button class="btn primary big" id="pnSave" type="submit" ${(m.total && m.done < m.total) || saving || !pnOk(m).length ? "disabled" : ""}>${pnSaveLbl(m)}</button></div></form>`;
   },
   prod: () => {
     const m = modal, d = m.data, ph = d.photo;
     const img = !ph ? `<div class="hero-img empty">${I.gal}</div>` : `<div class="hero-img">${ph.dataUrl ? `<img src="${ph.dataUrl}" alt="" data-action="prodZoom">` : `<img data-thumb="${esc(ph.thumb || ph.path)}" alt="" data-action="prodZoom" hidden>`}<span class="nbadges"><span class="nbadge">${swatch(d.fam, d.hex)}${esc(shadeName(d))}</span>${d.type ? `<span class="nbadge">${esc(typeName(d.type))}</span>` : ""}</span></div>`;
-    return `<form class="sheet full" id="modalForm" role="dialog" aria-modal="true" novalidate>${mhead("Termék")}
-     ${img}
+    return `<form class="sheet full prodsheet" id="modalForm" role="dialog" aria-modal="true" novalidate>${mhead("Termék")}
+     <div class="pgrid2"><div>${img}</div><div class="stack" style="gap:12px">
      <div class="field"><label for="m-name">Megnevezés</label><input class="in-ctl" id="m-name" data-mf="name" value="${esc(d.name)}" enterkeyhint="done" placeholder="pl. Terrakotta falikárpit 60 cm"></div>
      <div class="nrow"><div class="field"><label for="m-cat">Kategória</label><select class="in-ctl" id="m-cat" data-mf="cat">${catOpts(d.cat)}</select></div><div class="field"><label for="m-type">Típus</label><select class="in-ctl" id="m-type" data-mf="type">${typeOpts(d.type)}</select></div></div>
      ${aiOn() && ph ? `<div class="btns"><button type="button" class="btn small" data-action="pAi" ${m.aiBusy ? "disabled" : ""}>${m.aiBusy ? "Felismerés…" : "Típus felismerése a fotóról"}</button><span class="note ai-st">${esc(aiStatus())}</span></div>${m.aiErr ? errBox(m.aiErr) : ""}${m.aiAlt ? `<div class="famchips">${m.aiAlt.map((x) => `<button type="button" class="famchip ${d.type === x.k ? "on" : ""}" data-action="pType" data-v="${x.k}">${esc(TYPE[x.k].n)} <span class="note num">${x.p}%</span></button>`).join("")}</div>` : ""}` : ""}
      <div class="nrow"><div class="field"><label>Raktáron</label>${stepper(d.qty, 'data-action="pStep"')}</div><div class="field"><label for="m-price">Ár (Ft)</label><input class="in-ctl num" id="m-price" data-mf="price" inputmode="numeric" enterkeyhint="done" value="${esc(d.price)}" placeholder="darabonként"></div></div>
      <details class="more" ${m.colorOpen ? "open" : ""} data-color><summary>Szín: ${swatch(d.fam, d.hex)} ${esc(shadeName(d))} ${d.colorManual ? "(kézzel)" : "(felismert)"}</summary>${shadeChooser(d, 'data-action="pShade"')}</details>
      <div class="field"><label for="m-note">Megjegyzés</label><input class="in-ctl" id="m-note" data-mf="note" value="${esc(d.note || "")}" enterkeyhint="done" placeholder="méret, zsinór vastagsága, hol tárolod…"></div>
-     <p class="note" id="mErr" hidden style="color:var(--danger);margin:0"></p>
+     <p class="note" id="mErr" hidden style="color:var(--danger);margin:0"></p></div></div>
      <div class="sticky-save">${m.confirm ? '<button type="button" class="btn danger solid" data-action="pDel">Igen, törlöm</button>' : '<button type="button" class="btn danger" data-action="pAskDel">Törlés</button>'}<button class="btn primary big" type="submit">Mentés</button></div></form>`;
   },
   prodCats: () => {
@@ -1042,7 +1047,7 @@ function modalInput(t) {
     if (f === "cat" && t.value === "__new") { const v = addCat(prompt("Új kategória neve (pl. Karkötők):") || ""); it.cat = v || it.cat; drawModal(); return true; }
     it[f] = t.value; if (f === "cat") it.catTouched = true;
     if (f === "type" && !it.catTouched) it.cat = suggestCat(it.type, it.cat);
-    if (f === "type" || f === "cat") drawModal();
+    if (f === "type" || f === "cat") { const nm = document.getElementById("pn-name-" + it.key); if (nm) nm.placeholder = autoName(it, it.cat); }
     return true;
   }
   if (t.dataset.mf !== undefined && modal.kind === "prod") {
@@ -1060,54 +1065,120 @@ function addCat(name) {
   return v;
 }
 
-/* ---- Fotók feldolgozása (sorban, hogy a telefon memóriája bírja) ---- */
+/* ---- Fotók feldolgozása háttérszálon (Web Worker), hogy a felület ne akadjon ---- */
+const WORKER_SRC = `self.onmessage = async (e) => {
+  const { id, file } = e.data;
+  try {
+    const bmp = await createImageBitmap(file);
+    const W = (m) => { const k = Math.min(1, m / Math.max(bmp.width, bmp.height)); const c = new OffscreenCanvas(Math.max(1, Math.round(bmp.width * k)), Math.max(1, Math.round(bmp.height * k))); c.getContext("2d").drawImage(bmp, 0, 0, c.width, c.height); return c; };
+    const full = W(1600), th = W(520), sm = W(80);
+    const img = sm.getContext("2d").getImageData(0, 0, sm.width, sm.height);
+    bmp.close();
+    const fullBlob = await full.convertToBlob({ type: "image/jpeg", quality: 0.82 });
+    const thBlob = await th.convertToBlob({ type: "image/jpeg", quality: 0.78 });
+    self.postMessage({ id, ok: true, fullBlob, thBlob, w: img.width, h: img.height, buf: img.data.buffer }, [img.data.buffer]);
+  } catch (err) { self.postMessage({ id, ok: false, name: err && err.name, message: String((err && err.message) || err) }); }
+};`;
+let imgWorker = null, workerOk = typeof Worker !== "undefined" && typeof OffscreenCanvas !== "undefined" && !!(window.OffscreenCanvas && OffscreenCanvas.prototype.convertToBlob);
+const workerJobs = {};
+function getWorker() {
+  if (!workerOk) return null;
+  if (imgWorker) return imgWorker;
+  try {
+    imgWorker = new Worker(URL.createObjectURL(new Blob([WORKER_SRC], { type: "text/javascript" })));
+    imgWorker.onmessage = (e) => { const j = workerJobs[e.data.id]; if (j) { delete workerJobs[e.data.id]; j(e.data); } };
+    imgWorker.onerror = () => { workerOk = false; Object.values(workerJobs).forEach((j) => j({ ok: false, message: "worker" })); imgWorker = null; };
+  } catch (e) { workerOk = false; imgWorker = null; }
+  return imgWorker;
+}
+const pause = (ms) => new Promise((r) => setTimeout(r, ms || 0));
+async function processFile(f) {
+  const wk = getWorker();
+  if (wk) {
+    const id = uid("w"), r = await new Promise((res) => { workerJobs[id] = res; wk.postMessage({ id, file: f }); });
+    if (r.ok) return { fullBlob: r.fullBlob, thBlob: r.thBlob, col: analyzeColors({ w: r.w, h: r.h, data: new Uint8ClampedArray(r.buf) }) };
+  }
+  // tartalék: fő szálon, lépések között szünettel (HEIC átalakítás is itt fut)
+  const bmp = await decodeImage(f); await pause(16);
+  const full = scaled(bmp, 1600); await pause(16);
+  const th = scaled(bmp, 520); if (bmp.close) bmp.close();
+  const col = analyzeColors(th); await pause(16);
+  const fullBlob = await toBlob(full, 0.82), thBlob = await toBlob(th, 0.78);
+  full.width = full.height = 0;
+  return { fullBlob, thBlob, col };
+}
+/* Folyamatjelzés: százalék és darab, az ablak újrarajzolása nélkül */
+const pbar = (pct, label) => `<div class="pbar"><div class="pbar-top"><span>${label}</span><b class="num">${pct}%</b></div><div class="pbar-track"><b style="width:${pct}%"></b></div></div>`;
+function pnBusyHtml(m) {
+  let h = "";
+  if (m.saving != null) { const n = m.items.filter((x) => !x.err).length, pct = n ? Math.round(m.saveStep / (n * 2) * 100) : 0; h += pbar(pct, `${CLOUD && store.uid ? "Feltöltés a felhőbe" : "Mentés"}: ${Math.min(n, m.saving + 1)}/${n} kép`); }
+  else if (m.total && m.done < m.total) h += pbar(Math.round(m.done / m.total * 100), `Képek feldolgozása: ${m.done}/${m.total} kész`);
+  if (m.items.some((x) => x.ai === "wait" || x.ai === "run")) h += ai.st === "loading" ? pbar(ai.pct, "Termékfelismerő letöltése (egyszeri)") : pbar(Math.round(m.items.filter((x) => x.ai === "ok").length / Math.max(1, m.items.filter((x) => !x.err).length) * 100), "Termékek felismerése");
+  if (ai.st === "error" && aiOn() && ai.err) h += errBox(ai.err, '<div class="btns"><button type="button" class="btn small" data-action="aiRetry">Újrapróbálás</button></div>');
+  return h;
+}
+const pnOk = (m) => m.items.filter((x) => !x.err);
+const pnTitle = (m) => { const n = pnOk(m).length; return n > 1 ? `${n} új termék` : "Új termék"; };
+const pnSaveLbl = (m) => { const n = pnOk(m).length; if (m.saving != null) return `Mentés… ${Math.round(m.saveStep / Math.max(1, n * 2) * 100)}%`; if (m.total && m.done < m.total) return `Feldolgozás… ${m.done}/${m.total}`; return n > 1 ? `${n} termék mentése` : "Termék mentése"; };
+function pnUpdate(m) {
+  if (modal !== m) return;
+  const bx = document.getElementById("pnBusy"); if (bx) bx.innerHTML = pnBusyHtml(m);
+  const t = document.getElementById("pnTitle"); if (t) t.textContent = pnTitle(m);
+  const b = document.getElementById("pnSave"); if (b) { b.textContent = pnSaveLbl(m); b.disabled = !!(m.saving != null || (m.total && m.done < m.total) || !pnOk(m).length); }
+  if (window.fsModal) fsModal.update();
+}
+function pnAppend(m, it) { if (modal !== m) return; const c = document.getElementById("pnCards"); if (c) c.insertAdjacentHTML("beforeend", ncardHtml(it)); pnUpdate(m); }
+function pnRefresh(m, it) { if (modal !== m) return; const el = document.getElementById("nc-" + it.key); if (el) el.outerHTML = ncardHtml(it); pnUpdate(m); }
 async function addProdFiles(list) {
   const files = [...list]; if (!files.length) return;
   if (!modal || modal.kind !== "prodNew") {
     const cats = prodCats();
-    openModal({ kind: "prodNew", items: [], busy: 0, cat: ui.prodCat && ui.prodCat !== "all" && cats.includes(ui.prodCat) ? ui.prodCat : (cats[0] || "") });
+    openModal({ kind: "prodNew", items: [], total: 0, done: 0, cat: ui.prodCat && ui.prodCat !== "all" && cats.includes(ui.prodCat) ? ui.prodCat : (cats[0] || "") });
   }
-  const m = modal; m.busy += files.length; drawModal();
-  if (files.length > 8) toast("Sok kép egyszerre: ha a telefon lelassul, válassz kevesebbet.");
+  const m = modal; m.total += files.length; pnUpdate(m);
+  if (files.length > 12) toast("Sok kép egyszerre: ha a telefon lelassul, válassz kevesebbet.");
   for (const f of files) {
-    const key = uid("i");
+    const key = uid("i"); let it;
     try {
-      const bmp = await decodeImage(f), full = scaled(bmp, 1600), th = scaled(bmp, 520);
-      if (bmp.close) bmp.close();
-      const col = analyzeColors(th), fullBlob = await toBlob(full, 0.82), thBlob = await toBlob(th, 0.78);
-      full.width = full.height = 0;
-      m.items.push({ key, name: "", qty: 1, price: "", cat: m.cat, fam: col.fam, hex: col.hex, shade: col.shade, palette: col.palette, type: "", ai: aiOn() ? "wait" : "", fullBlob, thBlob, url: URL.createObjectURL(thBlob) });
+      const r = await processFile(f);
+      it = { key, name: "", qty: 1, price: "", cat: m.cat, fam: r.col.fam, hex: r.col.hex, shade: r.col.shade, palette: r.col.palette, type: "", ai: aiOn() ? "wait" : "", fullBlob: r.fullBlob, thBlob: r.thBlob, url: URL.createObjectURL(r.thBlob) };
     } catch (e) {
-      m.items.push({ key, fname: f.name || "kép", err: logErr(explain(e, "decode", f), "Fotó beolvasása: " + (f.name || "")) });
+      it = { key, fname: f.name || "kép", err: logErr(explain(e, "decode", f), "Fotó beolvasása: " + (f.name || "")) };
     }
-    m.busy--; if (modal === m) drawModal();
+    m.items.push(it); m.done++;
+    pnAppend(m, it);
+    await pause(30); // levegő a görgetésnek
   }
   if (aiOn()) runAi(m);
 }
 async function runAi(m) {
   for (const it of m.items) {
     if (it.ai !== "wait") continue;
-    it.ai = "run"; if (modal === m) drawModal();
+    it.ai = "run"; pnRefresh(m, it);
     try {
       const res = await aiClassify(it.thBlob);
       it.ai = "ok"; it.typeAlt = res.slice(0, 4);
       if (!it.type) { it.type = res[0].k; it.typeP = res[0].p; }
       if (!it.catTouched) it.cat = suggestCat(it.type, it.cat);
     } catch (e) {
-      m.items.forEach((x) => { if (x.ai === "wait" || x.ai === "run") x.ai = ""; });
-      if (modal === m) drawModal(); return;
+      m.items.forEach((x) => { if (x.ai === "wait" || x.ai === "run") { x.ai = ""; pnRefresh(m, x); } });
+      pnUpdate(m); return;
     }
-    if (modal === m) drawModal(); else return;
+    if (modal !== m) return;
+    pnRefresh(m, it); await pause(30);
   }
 }
-async function storeProdPhoto(id, fullBlob, thBlob) {
+async function storeProdPhoto(id, fullBlob, thBlob, step) {
+  step = step || (() => {});
   if (CLOUD && sb && store.uid) {
     if (online()) {
       const base = `${store.uid}/products/${id}`;
       try {
         const a = await sb.storage.from("documents").upload(base + ".jpg", fullBlob, { contentType: "image/jpeg", upsert: true });
         if (a.error) throw a.error;
+        step();
         const b = await sb.storage.from("documents").upload(base + "-t.jpg", thBlob, { contentType: "image/jpeg", upsert: true });
+        step();
         return { photo: b.error ? { path: base + ".jpg" } : { path: base + ".jpg", thumb: base + "-t.jpg" } };
       } catch (e) {
         const err = logErr(explain(e, "upload"), "Fotó feltöltése");
@@ -1119,18 +1190,20 @@ async function storeProdPhoto(id, fullBlob, thBlob) {
   return { photo: { dataUrl: await blobUrl(thBlob) } };
 }
 async function saveProdBatch() {
-  const m = modal; if (!m || m.busy || m.saving != null) return;
+  const m = modal; if (!m || (m.total && m.done < m.total) || m.saving != null) return;
   const ok = m.items.filter((x) => !x.err);
   if (!ok.length) return modalErr("Nincs menthető kép. Adj hozzá egy fotót.");
   if (ok.some((x) => !x.cat)) return modalErr("Minden képnél válassz kategóriát (fent egyszerre is beállíthatod).");
   ok.forEach((x) => addCat(x.cat));
-  m.saving = 0; drawModal();
+  m.saving = 0; m.saveStep = 0; pnUpdate(m);
   let lastErr = null;
   for (let i = 0; i < ok.length; i++) {
-    const it = ok[i], id = uid("prd"), r = await storeProdPhoto(id, it.fullBlob, it.thBlob);
+    const it = ok[i], id = uid("prd"), before = m.saveStep;
+    const r = await storeProdPhoto(id, it.fullBlob, it.thBlob, () => { m.saveStep++; pnUpdate(m); });
+    m.saveStep = before + 2;
     if (r.err) lastErr = r.err;
     setRec(id, "settings", { name: String(it.name || "").trim() || autoName(it, it.cat), cat: it.cat, type: it.type || "", fam: it.fam, hex: it.hex, shade: it.shade, palette: it.palette, colorManual: !!it.manual, qty: it.qty === "" ? "" : num(it.qty), price: num(it.price), note: "", photo: r.photo, created: Date.now() + i }, { quiet: true });
-    m.saving = i + 1; if (modal === m) drawModal();
+    m.saving = i + 1; pnUpdate(m); await pause(0);
   }
   m.items.forEach((x) => x.url && URL.revokeObjectURL(x.url));
   modal = null; drawModal();
@@ -1222,11 +1295,11 @@ const PA = {
   aiRetry: () => { ai.st = "off"; ai.err = null; if (modal && modal.items) modal.items.forEach((x) => { if (!x.err && !x.type) x.ai = "wait"; }); drawModal(); if (modal && modal.kind === "prodNew") runAi(modal); },
   pnCatAll: (b) => { modal.cat = b.dataset.v; modal.items.forEach((x) => { x.cat = b.dataset.v; x.catTouched = true; }); drawModal(); },
   pnCatNew: () => { const v = addCat(prompt("Új kategória neve (pl. Karkötők):") || ""); if (!v) return; modal.cat = v; modal.items.forEach((x) => { x.cat = v; x.catTouched = true; }); drawModal(); },
-  pnColor: (b) => { const it = itemOf(b); if (it) { it.open = !it.open; drawModal(); } },
-  pnShade: (b) => { const it = itemOf(b); if (!it) return; if (b.dataset.p !== undefined) { const p = it.palette[+b.dataset.p]; if (!p) return; it.fam = p.f; it.hex = p.hex; it.shade = p.s; } else { const s = SH[b.dataset.s]; it.fam = s.fam; it.hex = s.hex; it.shade = s.k; } it.manual = true; it.open = false; drawModal(); },
-  pnStep: (b) => { const it = itemOf(b); if (!it) return; it.qty = Math.max(0, num(it.qty) + +b.dataset.k); drawModal(); },
+  pnColor: (b) => { const it = itemOf(b); if (it) { it.open = !it.open; pnRefresh(modal, it); } },
+  pnShade: (b) => { const it = itemOf(b); if (!it) return; if (b.dataset.p !== undefined) { const p = it.palette[+b.dataset.p]; if (!p) return; it.fam = p.f; it.hex = p.hex; it.shade = p.s; } else { const s = SH[b.dataset.s]; it.fam = s.fam; it.hex = s.hex; it.shade = s.k; } it.manual = true; it.open = false; pnRefresh(modal, it); },
+  pnStep: (b) => { const it = itemOf(b); if (!it) return; it.qty = Math.max(0, num(it.qty) + +b.dataset.k); pnRefresh(modal, it); },
   pnZoom: (b) => { const it = itemOf(b); if (it) showPhoto(it.url); },
-  pnDel: (b) => { const i = modal.items.findIndex((x) => x.key === b.dataset.k); if (i < 0) return; const it = modal.items.splice(i, 1)[0]; if (it.url) URL.revokeObjectURL(it.url); if (!modal.items.length && !modal.busy) closeModal(); else drawModal(); },
+  pnDel: (b) => { const i = modal.items.findIndex((x) => x.key === b.dataset.k); if (i < 0) return; const it = modal.items.splice(i, 1)[0]; if (it.url) URL.revokeObjectURL(it.url); modal.total--; modal.done--; if (!modal.items.length && !(modal.total && modal.done < modal.total)) closeModal(); else { const el = document.getElementById("nc-" + it.key); if (el) el.remove(); pnUpdate(modal); } },
   pShade: (b) => { const d = modal.data; if (b.dataset.p !== undefined) { const p = (d.palette || [])[+b.dataset.p]; if (!p) return; d.fam = p.f; d.hex = p.hex; d.shade = p.s || nearestShade(p.hex, p.f).k; } else { const s = SH[b.dataset.s]; d.fam = s.fam; d.hex = s.hex; d.shade = s.k; } d.colorManual = true; modal.colorOpen = false; drawModal(); },
   pStep: (b) => { modal.data.qty = Math.max(0, num(modal.data.qty) + +b.dataset.k); drawModal(); },
   pType: (b) => { modal.data.type = b.dataset.v; drawModal(); },
@@ -1400,7 +1473,7 @@ function vSet() {
    <div class="btns"><button type="button" class="btn" data-action="sample">Mintaadatok betöltése</button><button type="button" class="btn" data-action="clearSample">Mintaadatok törlése</button>
    ${uiConfirm === "wipe" ? '<button type="button" class="btn danger solid" data-action="wipe">Igen, minden rendelés és kiadás törlése</button><button type="button" class="btn" data-action="cancelConfirm">Mégse</button>' : '<button type="button" class="btn danger" data-action="askWipe">Minden adat törlése</button>'}</div>
   </div></div>
-  <p class="note" style="text-align:center">SM home dekor Planner · 2.6</p>
+  <p class="note" style="text-align:center">SM home dekor Planner · 2.7</p>
   </div>`;
 }
 
@@ -1904,6 +1977,49 @@ function bead(kind, k) {
     else { cord(0, 0.035, 0.04); tone(698, 0, 0.035); }
   } catch (e) { /* hang nélkül megy tovább */ }
 }
+
+/* ---------- Húzható görgetőcsúszka (a telefonok elrejtik a görgetősávot) ---------- */
+function FastScroll(getTarget, getBox, getLabel) {
+  const tr = document.createElement("div"); tr.className = "fs"; tr.innerHTML = '<div class="fs-thumb"><i></i></div><div class="fs-bubble" hidden></div>';
+  document.body.appendChild(tr);
+  const th = tr.firstChild, bub = tr.lastChild; let drag = null, raf = 0, idle = 0;
+  const met = () => { const t = getTarget(); if (!t) return null; if (t === window) { const d = document.documentElement; return { t, st: window.scrollY, sh: d.scrollHeight, ch: window.innerHeight }; } return { t, st: t.scrollTop, sh: t.scrollHeight, ch: t.clientHeight }; };
+  const api = {
+    update() {
+      cancelAnimationFrame(raf); raf = requestAnimationFrame(() => {
+        const m = met(), box = getBox();
+        if (!m || !box || m.sh < m.ch * 1.4) { tr.hidden = true; return; }
+        tr.hidden = false; tr.style.top = box.top + "px"; tr.style.height = box.h + "px"; tr.style.left = (box.right - 30) + "px";
+        const thH = Math.max(52, box.h * m.ch / m.sh), y = (box.h - thH) * Math.min(1, m.st / Math.max(1, m.sh - m.ch));
+        th.style.height = thH + "px"; th.style.transform = `translateY(${y}px)`;
+        tr.classList.add("on"); clearTimeout(idle); idle = setTimeout(() => { if (!drag) tr.classList.remove("on"); }, 1400);
+      });
+    }
+  };
+  const move = (cy) => {
+    const m = met(), box = getBox(); if (!m || !box) return;
+    const thH = th.offsetHeight, r = Math.max(0, Math.min(1, (cy - box.top - drag.grab) / Math.max(1, box.h - thH))), to = r * (m.sh - m.ch);
+    if (m.t === window) window.scrollTo(0, to); else m.t.scrollTop = to;
+    const lab = getLabel && getLabel(); if (lab) { bub.hidden = false; bub.textContent = lab; bub.style.transform = `translateY(${r * (box.h - thH) + thH / 2 - 18}px)`; } else bub.hidden = true;
+  };
+  th.addEventListener("pointerdown", (e) => { e.preventDefault(); e.stopPropagation(); th.setPointerCapture(e.pointerId); const r = th.getBoundingClientRect(); drag = { grab: e.clientY - r.top }; tr.classList.add("drag", "on"); });
+  th.addEventListener("pointermove", (e) => { if (drag) { e.preventDefault(); move(e.clientY); } });
+  const end = () => { if (!drag) return; drag = null; tr.classList.remove("drag"); bub.hidden = true; api.update(); };
+  th.addEventListener("pointerup", end); th.addEventListener("pointercancel", end);
+  document.addEventListener("scroll", () => api.update(), { passive: true, capture: true });
+  window.addEventListener("resize", () => api.update());
+  return api;
+}
+const pageBox = () => { const nav = document.getElementById("tabsNav"), rail = nav && !nav.hidden && window.innerWidth >= 900; const bottom = nav && !nav.hidden && !rail ? nav.getBoundingClientRect().top : window.innerHeight; return { top: 70, h: Math.max(100, bottom - 70 - 10), right: window.innerWidth }; };
+function pageLabel() {
+  if (ui.tab !== "prod") return "";
+  const marks = [...document.querySelectorAll(".shelf-mark, .ghead")], y = window.innerHeight * 0.35; let lab = "";
+  for (const mk of marks) { if (mk.getBoundingClientRect().top <= y) { const k = mk.id ? mk.id.slice(3) : ""; lab = mk.id ? (FAM[k] ? famName(k) : k) : mk.textContent.replace(/\d+$/, "").trim(); } }
+  return lab;
+}
+const fsPage = FastScroll(() => window, pageBox, pageLabel);
+window.fsModal = FastScroll(() => document.querySelector("#modal .sheet") || document.querySelector("#sheet .sheet"), () => { const sh = document.querySelector("#modal .sheet") || document.querySelector("#sheet .sheet"); if (!sh) return null; const r = sh.getBoundingClientRect(), save = sh.querySelector(".sticky-save"); return { top: r.top + 70, h: Math.max(80, r.height - 80 - (save ? save.offsetHeight : 0)), right: r.right }; });
+new MutationObserver(() => { fsPage.update(); fsModal.update(); }).observe(document.body, { childList: true, subtree: true });
 
 /* ---------- Indítás ---------- */
 render();

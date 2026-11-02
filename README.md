@@ -88,6 +88,16 @@ Alsó sor: **Főoldal · Naptár · ＋ Új · Árukészlet · Menü**.
   Alapanyagok, Cég adatai, Beállítások, Motiváció, Rajztábla). Minden aloldal tetején
   „‹ Menü” vissza gomb van.
 
+## 2.7 – gyorsítás, görgetés, táblagép
+
+- A fotók feldolgozása háttérszálon fut (Web Worker), így a felület nem akad meg
+  (teszt: 16 db 12 megapixeles fotó kb. 2,5 mp alatt, görgetés közben is).
+- Feldolgozás és feltöltés közben folyamatjelző: darab (pl. 10/16) és százalék.
+- Húzható görgetőcsúszka a jobb szélen az oldalakon és az ablakokban; az árukészletben
+  húzás közben kiírja, melyik színnél vagy betűnél jársz.
+- Táblagép: 900 px szélesség felett (fektetve) oldalsó menüsáv, szélesebb tartalom,
+  polcon soronként 5–7 termék, feltöltéskor 2–3 kártya egymás mellett, a termékadatlap két hasábos.
+
 ## Árukészlet (fényképes, 2.6)
 
 - **Fotó készítése** (kamera) vagy **Galériából** (egyszerre több kép is, ajánlott max. 5–6).
