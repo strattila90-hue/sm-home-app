@@ -181,7 +181,11 @@ async function initCloud() {
   try { const { data } = await sb.auth.getSession(); applySession(data.session); }
   catch (e) { auth.ready = true; render(); }
 }
-window.addEventListener("online", () => { syncNow(); });
+window.addEventListener("online", () => {
+  if (CLOUD && !sb && !window.supabase) { loadScript("https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js").then(initCloud).catch(() => {}); return; }
+  if (CLOUD && !sb && window.supabase) { initCloud(); return; }
+  syncNow();
+});
 window.addEventListener("offline", paintStatus);
 document.addEventListener("visibilitychange", () => {
   if (document.visibilityState === "visible") { const t = dstr(new Date()); if (t !== TODAY) { TODAY = t; render(); } syncNow(); }
@@ -256,7 +260,7 @@ const MORE = [
   ["Vállalkozás", [["biz", "Cég adatai", "Adószám, hivatalos dokumentumok"], ["set", "Beállítások", "Termékárak, mentés, telepítés"]]],
   ["Magamnak", [["motiv", "Motiváció", "Miért csinálom, céljaim"], ["draw", "Rajztábla", "Vázlatok, kikapcsolódás"]]]
 ];
-const SHELL_OK = (document.querySelector('meta[name="smhd-shell"]') || {}).content === "2.7";
+const SHELL_OK = (document.querySelector('meta[name="smhd-shell"]') || {}).content === "2.8";
 
 /* ---------- Állapotjelző ---------- */
 function paintStatus() {
@@ -304,6 +308,7 @@ function render(force) {
   loadThumbs();
   if (ui.tab === "set") drawQr();
   if (ui.tab === "draw") mountCanvas();
+  if (ui.tab === "prod") setTimeout(() => backfillFeatures().catch(() => {}), 1500);
 }
 document.addEventListener("focusout", () => { setTimeout(() => { if (pending) render(); }, 0); });
 
@@ -736,43 +741,112 @@ function smallPixels(src) {
   const cx = c.getContext("2d", { willReadFrequently: true }); cx.drawImage(src, 0, 0, w, h);
   return { w, h, data: cx.getImageData(0, 0, w, h).data };
 }
-function analyzeColors(src) {
-  const sp = src.data ? src : smallPixels(src), w = sp.w, h = sp.h;
-  const px = sp.data, B = Math.max(2, Math.round(Math.min(w, h) * 0.07));
-  const buckets = {}; let bn = 0;
+/* Szegmentálás: a kép pixeleit k-közép csoportokba rendezi (Lab színtér). A kép szélét nagyrészt
+   elfoglaló csoport a háttér, a többi a termék. Ebből jön a fő szín és a hasonlósági lenyomat. */
+function rgbLab(r, g, b) {
+  const f1 = (v) => { v /= 255; return v > 0.04045 ? Math.pow((v + 0.055) / 1.055, 2.4) : v / 12.92; };
+  const R = f1(r), G = f1(g), B = f1(b), f = (t) => (t > 0.008856 ? Math.cbrt(t) : 7.787 * t + 16 / 116);
+  const x = f((R * 0.4124 + G * 0.3576 + B * 0.1805) / 0.95047), y = f(R * 0.2126 + G * 0.7152 + B * 0.0722), z = f((R * 0.0193 + G * 0.1192 + B * 0.9505) / 1.08883);
+  return [116 * y - 16, 500 * (x - y), 200 * (y - z)];
+}
+function segment(sp) {
+  const { w, h, data } = sp, n = w * h, Lb = new Float32Array(n * 3), K = 6, B = Math.max(2, Math.round(Math.min(w, h) * 0.07));
+  const border = new Uint8Array(n), cw = new Float32Array(n), alpha = new Uint8Array(n);
+  let nb = 0;
   for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
-    if (x >= B && x < w - B && y >= B && y < h - B) continue;
-    const i = (y * w + x) * 4, key = (px[i] >> 5) * 64 + (px[i + 1] >> 5) * 8 + (px[i + 2] >> 5);
-    const b = buckets[key] || (buckets[key] = { n: 0, r: 0, g: 0, b: 0 }); b.n++; b.r += px[i]; b.g += px[i + 1]; b.b += px[i + 2]; bn++;
+    const i = y * w + x, o = i * 4, l = rgbLab(data[o], data[o + 1], data[o + 2]);
+    Lb[i * 3] = l[0]; Lb[i * 3 + 1] = l[1]; Lb[i * 3 + 2] = l[2]; alpha[i] = data[o + 3] >= 128 ? 1 : 0;
+    if (x < B || x >= w - B || y < B || y >= h - B) { border[i] = 1; nb++; }
+    const dx = (x - w / 2) / (w / 2), dy = (y - h / 2) / (h / 2); cw[i] = Math.pow(Math.max(0.08, 1 - Math.min(1, Math.hypot(dx, dy) / 1.2)), 1.5);
   }
-  const top = Object.values(buckets).sort((a, b) => b.n - a.n)[0], bg = top ? [top.r / top.n, top.g / top.n, top.b / top.n] : null;
-  const near = (i) => bg && Math.hypot(px[i] - bg[0], px[i + 1] - bg[1], px[i + 2] - bg[2]) < 44;
-  let useBg = !!(top && top.n / bn > 0.3);
-  if (useBg && !NEUTRAL.has(famOf(bg[0], bg[1], bg[2]))) {
-    let cn = 0, cb = 0;
-    for (let y = Math.round(h * 0.3); y < h * 0.7; y++) for (let x = Math.round(w * 0.3); x < w * 0.7; x++) { cn++; if (near((y * w + x) * 4)) cb++; }
-    if (cn && cb / cn > 0.6) useBg = false;
+  // k-means++ (determinisztikus kezdés: a középső pixel, majd mindig a legtávolabbi)
+  const C = [], d2 = new Float32Array(n).fill(Infinity), ci = Math.floor(h / 2) * w + Math.floor(w / 2);
+  C.push([Lb[ci * 3], Lb[ci * 3 + 1], Lb[ci * 3 + 2]]);
+  while (C.length < K) {
+    const c = C[C.length - 1]; let far = 0, fi = 0;
+    for (let i = 0; i < n; i++) { const d = (Lb[i * 3] - c[0]) ** 2 + (Lb[i * 3 + 1] - c[1]) ** 2 + (Lb[i * 3 + 2] - c[2]) ** 2; if (d < d2[i]) d2[i] = d; if (d2[i] > far) { far = d2[i]; fi = i; } }
+    if (far < 25) break; C.push([Lb[fi * 3], Lb[fi * 3 + 1], Lb[fi * 3 + 2]]);
   }
-  const run = (skipBg) => {
-    const fam = {}; let tot = 0;
-    for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
-      const i = (y * w + x) * 4; if (px[i + 3] < 128 || (skipBg && near(i))) continue;
-      const dx = (x - w / 2) / (w / 2), dy = (y - h / 2) / (h / 2), d = Math.min(1, Math.hypot(dx, dy) / 1.2);
-      const f = famOf(px[i], px[i + 1], px[i + 2]); let wt = Math.pow(Math.max(0.1, 1 - d), 1.5);
-      if (!NEUTRAL.has(f)) wt *= 1.15;
-      const a = fam[f] || (fam[f] = { f, w: 0, r: 0, g: 0, b: 0 }); a.w += wt; a.r += px[i] * wt; a.g += px[i + 1] * wt; a.b += px[i + 2] * wt; tot += wt;
+  const lab2 = new Uint8Array(n);
+  for (let it = 0; it < 8; it++) {
+    const acc = C.map(() => [0, 0, 0, 0]);
+    for (let i = 0; i < n; i++) {
+      let bi = 0, bd = Infinity;
+      for (let k = 0; k < C.length; k++) { const d = (Lb[i * 3] - C[k][0]) ** 2 + (Lb[i * 3 + 1] - C[k][1]) ** 2 + (Lb[i * 3 + 2] - C[k][2]) ** 2; if (d < bd) { bd = d; bi = k; } }
+      lab2[i] = bi; const a = acc[bi]; a[0] += Lb[i * 3]; a[1] += Lb[i * 3 + 1]; a[2] += Lb[i * 3 + 2]; a[3]++;
     }
-    return { fam, tot };
-  };
-  let res = run(useBg); if (res.tot < 1.5) res = run(false);
-  const list = Object.values(res.fam).map((a) => ({ f: a.f, share: a.w / res.tot, hex: hex2(a.r / a.w, a.g / a.w, a.b / a.w) })).sort((a, b) => b.share - a.share);
-  if (!list.length) return { fam: "szurke", hex: "#9a9a9a", shade: "szurke", palette: [] };
-  const chroma = list.filter((x) => !NEUTRAL.has(x.f) && x.share >= 0.14);
-  const main = chroma.length >= 3 && list[0].share < 0.4 ? "tarka" : list[0].f;
-  // a végső árnyalat az adatbázis legközelebbi makramé színe (Lab színtérben), a család ebből jön
-  const sh = main === "tarka" ? SH.tarka : nearestShade(list[0].hex, null);
-  const pal = []; list.filter((x) => x.share >= 0.06).forEach((x) => { const s2 = nearestShade(x.hex, null); const ex = pal.find((y) => y.s === s2.k); if (ex) ex.p += Math.round(x.share * 100); else pal.push({ f: s2.fam, hex: x.hex, s: s2.k, p: Math.round(x.share * 100) }); });
-  return { fam: sh.fam, hex: list[0].hex, shade: sh.k, palette: pal.slice(0, 5) };
+    acc.forEach((a, k) => { if (a[3]) C[k] = [a[0] / a[3], a[1] / a[3], a[2] / a[3]]; });
+  }
+  const st = C.map(() => ({ n: 0, nb: 0, cw: 0, r: 0, g: 0, b: 0 }));
+  for (let i = 0; i < n; i++) { if (!alpha[i]) continue; const s0 = st[lab2[i]], o = i * 4; s0.n++; s0.nb += border[i]; s0.cw += cw[i]; s0.r += data[o]; s0.g += data[o + 1]; s0.b += data[o + 2]; }
+  const expB = nb / n;
+  st.forEach((c) => { c.bgShare = nb ? c.nb / nb : 0; c.dens = c.n ? (c.nb / c.n) / expB : 0; c.bg = false; c.hex = c.n ? hex2(c.r / c.n, c.g / c.n, c.b / c.n) : "#999999"; });
+  // háttér: azok a csoportok, amelyek együtt a kép szélének legalább ~75%-át lefedik (sima fal, fa asztal csíkjai)
+  let cover = 0;
+  [...st].sort((x, y) => y.bgShare - x.bgShare).forEach((c) => { if (cover >= 0.75 || c.bgShare < 0.06 || c.dens < 0.9) return; c.bg = true; cover += c.bgShare; });
+  let mask = new Uint8Array(n), area = 0;
+  for (let i = 0; i < n; i++) if (alpha[i] && !st[lab2[i]].bg) { mask[i] = 1; area++; }
+  if (area < n * 0.02) { mask.fill(1); area = n; st.forEach((c) => { c.bg = false; }); } // a termék kitölti a képet
+  return { w, h, n, Lb, lab2, st, mask, area, data };
+}
+function featuresOf(sg) {
+  const { w, h, n, mask, area, Lb, data } = sg;
+  let x0 = w, y0 = h, x1 = 0, y1 = 0;
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) if (mask[y * w + x]) { if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; }
+  const bw = Math.max(1, x1 - x0 + 1), bh = Math.max(1, y1 - y0 + 1), grid = new Array(64).fill(0), gc = new Array(64).fill(0);
+  const fam = {}, tex = [0, 0, 0, 0], vm = [0, 0, 0]; let top = 0, sym = 0, symN = 0;
+  for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) {
+    const i = y * w + x, gx = Math.min(7, Math.floor((x - x0) / bw * 8)), gy = Math.min(7, Math.floor((y - y0) / bh * 8)), g = gy * 8 + gx;
+    gc[g]++; if (!mask[i]) continue; grid[g]++;
+    vm[Math.min(2, Math.floor((y - y0) / bh * 3))]++;
+    const o = i * 4, f = famOf(data[o], data[o + 1], data[o + 2]); fam[f] = (fam[f] || 0) + 1;
+    if (x > 0 && y > 0 && x < w - 1 && y < h - 1) { const gr = Math.abs(Lb[(i + 1) * 3] - Lb[(i - 1) * 3]) + Math.abs(Lb[(i + w) * 3] - Lb[(i - w) * 3]); tex[gr < 5 ? 0 : gr < 12 ? 1 : gr < 25 ? 2 : 3]++; }
+    const mx = x0 + x1 - x; if (mx >= 0 && mx < w) { symN++; if (mask[y * w + mx]) sym++; }
+  }
+  for (let x = 0; x < w; x++) if (mask[x] || mask[w + x]) top++;
+  // összefüggő foltok száma (pl. fülbevaló párnál 2)
+  const seen = new Uint8Array(n); let blobs = 0; const stack = [];
+  for (let i = 0; i < n; i++) {
+    if (!mask[i] || seen[i]) continue; let size = 0; stack.push(i); seen[i] = 1;
+    while (stack.length) { const q = stack.pop(); size++; const qx = q % w; [q - 1, q + 1, q - w, q + w].forEach((r, k) => { if (r < 0 || r >= n || seen[r] || !mask[r]) return; if ((k === 0 && qx === 0) || (k === 1 && qx === w - 1)) return; seen[r] = 1; stack.push(r); }); }
+    if (size >= n * 0.012) blobs++;
+  }
+  const r2 = (v) => Math.round(v * 100) / 100, a = Math.max(1, area);
+  const famV = FAMS.map(([k]) => r2((fam[k] || 0) / a)), texT = Math.max(1, tex.reduce((x, y) => x + y, 0));
+  return [...grid.map((v, i) => r2(gc[i] ? v / gc[i] : 0)), ...famV,
+    r2(Math.min(3, bh / bw) / 3), r2(area / (bw * bh)), r2(area / n), r2(Math.min(4, blobs) / 4), r2(Math.min(1, top / w * 3)),
+    ...vm.map((v) => r2(v / a)), r2(symN ? sym / symN : 0), ...tex.map((v) => r2(v / texT))];
+}
+function analyzeColors(src) {
+  const sp = src.data ? src : smallPixels(src), sg = segment(sp);
+  const subj = sg.st.filter((c) => !c.bg && c.n).sort((a, b) => b.cw - a.cw), tot = subj.reduce((x, c) => x + c.n, 0) || 1;
+  const main = subj[0] || sg.st[0], pal = [];
+  subj.forEach((c) => { if (c.n / tot < 0.05) return; const s2 = nearestShade(c.hex, null), ex = pal.find((y) => y.s === s2.k); if (ex) ex.p += Math.round(c.n / tot * 100); else pal.push({ f: s2.fam, hex: c.hex, s: s2.k, p: Math.round(c.n / tot * 100) }); });
+  const chroma = [...new Set(pal.filter((x) => !NEUTRAL.has(x.f) && x.p >= 14).map((x) => x.f))];
+  const isTarka = chroma.length >= 3 && (pal[0] ? pal[0].p : 100) < 45;
+  const sh = isTarka ? SH.tarka : nearestShade(main.hex, null);
+  let feat = null; try { feat = featuresOf(sg); } catch (e) {}
+  return { fam: sh.fam, hex: main.hex, shade: sh.k, palette: pal.slice(0, 5), feat };
+}
+/* Tanulás a saját termékekből: a leghasonlóbb, már felvett termék típusa és kategóriája */
+function featDist(a, b) {
+  if (!a || !b || a.length !== b.length) return 1;
+  let dg = 0, df = 0, ds = 0;
+  for (let i = 0; i < 64; i++) dg += Math.abs(a[i] - b[i]);
+  for (let i = 64; i < 79; i++) df += Math.abs(a[i] - b[i]);
+  for (let i = 79; i < a.length; i++) ds += Math.abs(a[i] - b[i]);
+  return 0.6 * (dg / 64) + 0.05 * (df / 2) + 0.35 * (ds / (a.length - 79)); // a típust főleg az alak dönti el, a szín alig
+}
+function similarProducts(feat, skipId) {
+  if (!feat) return [];
+  return prodList().filter((p) => p.feat && p.id !== skipId).map((p) => ({ p, sim: Math.max(0, Math.round((1 - featDist(feat, p.feat) / 0.25) * 100)) })).filter((x) => x.sim > 0).sort((a, b) => b.sim - a.sim).slice(0, 3);
+}
+function learnSuggest(it) {
+  const top = similarProducts(it.feat)[0]; it.like = top && top.sim >= 55 ? { name: top.p.name, sim: top.sim, id: top.p.id } : null;
+  if (!it.like) return;
+  const p = top.p;
+  if (!it.catTouched && p.cat) it.cat = p.cat;
+  if (!it.typeTouched && p.type && (!it.type || it.ai !== "ok" || top.sim >= 75)) { it.type = p.type; it.typeP = 0; it.typeSrc = "learn"; }
 }
 const swatch = (fam, hex, big) => `<i class="sw ${big ? "big" : ""} ${fam === "tarka" ? "tarka" : ""}" style="background:${esc(hex || (FAM[fam] || FAM.szurke).hex)}"></i>`;
 const famName = (f) => (FAM[f] || { n: "Ismeretlen" }).n;
@@ -988,6 +1062,7 @@ function ncardHtml(it) {
   return `<div class="ncard" id="nc-${it.key}">
       <div class="nimg"><img src="${it.url}" alt="" decoding="async" data-action="pnZoom" data-k="${it.key}"><button type="button" class="nx" data-action="pnDel" data-k="${it.key}" aria-label="Kép kivétele">${I.x}</button>
        <span class="nbadges"><button type="button" class="nbadge" data-action="pnColor" data-k="${it.key}">${swatch(it.fam, it.hex)}${esc(SH[it.shade] ? SH[it.shade].n : famName(it.fam))} ▾</button>${it.ai === "run" || it.ai === "wait" ? '<span class="nbadge"><i class="dot-spin"></i>felismerés…</span>' : it.type ? `<span class="nbadge">${esc(TYPE[it.type].n)}${it.typeP ? ` · ${it.typeP}%` : ""}</span>` : ""}</span></div>
+      ${it.like ? `<div class="likebar">Hasonlít erre: <b>${esc(it.like.name)}</b> <span class="num">(${it.like.sim}%)</span> – a típust és kategóriát innen javaslom</div>` : ""}
       ${it.open ? `<div class="nsub">${shadeChooser(it, `data-action="pnShade" data-k="${it.key}"`)}</div>` : ""}
       <div class="nbody"><input class="in-ctl" id="pn-name-${it.key}" data-pk="${it.key}" data-pf="name" value="${esc(it.name)}" placeholder="${esc(autoName(it, it.cat))}" enterkeyhint="done" aria-label="Név (nem kötelező)">
        <div class="nrow"><select class="in-ctl" data-pk="${it.key}" data-pf="cat" aria-label="Kategória">${catOpts(it.cat)}</select><select class="in-ctl" data-pk="${it.key}" data-pf="type" aria-label="Terméktípus">${typeOpts(it.type)}</select></div>
@@ -1017,6 +1092,7 @@ const MV = {
      <div class="nrow"><div class="field"><label for="m-cat">Kategória</label><select class="in-ctl" id="m-cat" data-mf="cat">${catOpts(d.cat)}</select></div><div class="field"><label for="m-type">Típus</label><select class="in-ctl" id="m-type" data-mf="type">${typeOpts(d.type)}</select></div></div>
      ${aiOn() && ph ? `<div class="btns"><button type="button" class="btn small" data-action="pAi" ${m.aiBusy ? "disabled" : ""}>${m.aiBusy ? "Felismerés…" : "Típus felismerése a fotóról"}</button><span class="note ai-st">${esc(aiStatus())}</span></div>${m.aiErr ? errBox(m.aiErr) : ""}${m.aiAlt ? `<div class="famchips">${m.aiAlt.map((x) => `<button type="button" class="famchip ${d.type === x.k ? "on" : ""}" data-action="pType" data-v="${x.k}">${esc(TYPE[x.k].n)} <span class="note num">${x.p}%</span></button>`).join("")}</div>` : ""}` : ""}
      <div class="nrow"><div class="field"><label>Raktáron</label>${stepper(d.qty, 'data-action="pStep"')}</div><div class="field"><label for="m-price">Ár (Ft)</label><input class="in-ctl num" id="m-price" data-mf="price" inputmode="numeric" enterkeyhint="done" value="${esc(d.price)}" placeholder="darabonként"></div></div>
+     ${(() => { const sim = similarProducts(d.feat, m.id); return sim.length ? `<div class="field"><label>Hasonló termékeid</label><div class="simrow">${sim.map((x) => `<button type="button" class="simcard" data-action="prodLike" data-id="${esc(x.p.id)}">${prodImg(x.p.photo)}<span>${esc(x.p.name)}</span><small class="num">${x.sim}%</small></button>`).join("")}</div></div>` : ""; })()}
      <details class="more" ${m.colorOpen ? "open" : ""} data-color><summary>Szín: ${swatch(d.fam, d.hex)} ${esc(shadeName(d))} ${d.colorManual ? "(kézzel)" : "(felismert)"}</summary>${shadeChooser(d, 'data-action="pShade"')}</details>
      <div class="field"><label for="m-note">Megjegyzés</label><input class="in-ctl" id="m-note" data-mf="note" value="${esc(d.note || "")}" enterkeyhint="done" placeholder="méret, zsinór vastagsága, hol tárolod…"></div>
      <p class="note" id="mErr" hidden style="color:var(--danger);margin:0"></p></div></div>
@@ -1045,7 +1121,7 @@ function modalInput(t) {
     const it = modal.items.find((x) => x.key === t.dataset.pk); if (!it) return true;
     const f = t.dataset.pf;
     if (f === "cat" && t.value === "__new") { const v = addCat(prompt("Új kategória neve (pl. Karkötők):") || ""); it.cat = v || it.cat; drawModal(); return true; }
-    it[f] = t.value; if (f === "cat") it.catTouched = true;
+    it[f] = t.value; if (f === "cat") it.catTouched = true; if (f === "type") it.typeTouched = true;
     if (f === "type" && !it.catTouched) it.cat = suggestCat(it.type, it.cat);
     if (f === "type" || f === "cat") { const nm = document.getElementById("pn-name-" + it.key); if (nm) nm.placeholder = autoName(it, it.cat); }
     return true;
@@ -1141,7 +1217,8 @@ async function addProdFiles(list) {
     const key = uid("i"); let it;
     try {
       const r = await processFile(f);
-      it = { key, name: "", qty: 1, price: "", cat: m.cat, fam: r.col.fam, hex: r.col.hex, shade: r.col.shade, palette: r.col.palette, type: "", ai: aiOn() ? "wait" : "", fullBlob: r.fullBlob, thBlob: r.thBlob, url: URL.createObjectURL(r.thBlob) };
+      it = { key, name: "", qty: 1, price: "", cat: m.cat, fam: r.col.fam, hex: r.col.hex, shade: r.col.shade, palette: r.col.palette, feat: r.col.feat, type: "", ai: aiOn() ? "wait" : "", fullBlob: r.fullBlob, thBlob: r.thBlob, url: URL.createObjectURL(r.thBlob) };
+      learnSuggest(it);
     } catch (e) {
       it = { key, fname: f.name || "kép", err: logErr(explain(e, "decode", f), "Fotó beolvasása: " + (f.name || "")) };
     }
@@ -1158,8 +1235,9 @@ async function runAi(m) {
     try {
       const res = await aiClassify(it.thBlob);
       it.ai = "ok"; it.typeAlt = res.slice(0, 4);
-      if (!it.type) { it.type = res[0].k; it.typeP = res[0].p; }
-      if (!it.catTouched) it.cat = suggestCat(it.type, it.cat);
+      const strongLearn = it.like && it.like.sim >= 75 && it.typeSrc === "learn";
+      if (!it.typeTouched && !strongLearn) { it.type = res[0].k; it.typeP = res[0].p; it.typeSrc = "ai"; }
+      if (!it.catTouched && !(it.like && it.like.sim >= 55)) it.cat = suggestCat(it.type, it.cat);
     } catch (e) {
       m.items.forEach((x) => { if (x.ai === "wait" || x.ai === "run") { x.ai = ""; pnRefresh(m, x); } });
       pnUpdate(m); return;
@@ -1179,6 +1257,7 @@ async function storeProdPhoto(id, fullBlob, thBlob, step) {
         step();
         const b = await sb.storage.from("documents").upload(base + "-t.jpg", thBlob, { contentType: "image/jpeg", upsert: true });
         step();
+        thumbPut(b.error ? base + ".jpg" : base + "-t.jpg", thBlob);
         return { photo: b.error ? { path: base + ".jpg" } : { path: base + ".jpg", thumb: base + "-t.jpg" } };
       } catch (e) {
         const err = logErr(explain(e, "upload"), "Fotó feltöltése");
@@ -1202,7 +1281,7 @@ async function saveProdBatch() {
     const r = await storeProdPhoto(id, it.fullBlob, it.thBlob, () => { m.saveStep++; pnUpdate(m); });
     m.saveStep = before + 2;
     if (r.err) lastErr = r.err;
-    setRec(id, "settings", { name: String(it.name || "").trim() || autoName(it, it.cat), cat: it.cat, type: it.type || "", fam: it.fam, hex: it.hex, shade: it.shade, palette: it.palette, colorManual: !!it.manual, qty: it.qty === "" ? "" : num(it.qty), price: num(it.price), note: "", photo: r.photo, created: Date.now() + i }, { quiet: true });
+    setRec(id, "settings", { name: String(it.name || "").trim() || autoName(it, it.cat), cat: it.cat, type: it.type || "", fam: it.fam, hex: it.hex, shade: it.shade, palette: it.palette, feat: it.feat || null, colorManual: !!it.manual, qty: it.qty === "" ? "" : num(it.qty), price: num(it.price), note: "", photo: r.photo, created: Date.now() + i }, { quiet: true });
     m.saving = i + 1; pnUpdate(m); await pause(0);
   }
   m.items.forEach((x) => x.url && URL.revokeObjectURL(x.url));
@@ -1225,10 +1304,26 @@ async function migrateProdPhotos(manual) {
       const blob = await dataBlob(p.photo.dataUrl), base = `${store.uid}/products/${p.id}`;
       const { error } = await sb.storage.from("documents").upload(base + "-t.jpg", blob, { contentType: "image/jpeg", upsert: true });
       if (error) { const x = logErr(explain(error, "upload"), "Későbbi fotófeltöltés"); if (manual) toast(x.title, "Miért?", () => openModal({ kind: "errs" })); break; }
+      thumbPut(base + "-t.jpg", blob);
       const cur = data().products[p.id]; if (!cur) continue;
       setRec(p.id, "settings", Object.assign(clone(cur), { photo: { path: base + "-t.jpg", thumb: base + "-t.jpg" } }), { quiet: true }); done++;
     }
   } catch (e) { logErr(explain(e, "upload"), "Későbbi fotófeltöltés"); } finally { migrating = false; if (done) { render(); if (manual) toast(`${done} fotó feltöltve`); } }
+}
+let backfilling = false;
+async function backfillFeatures() {
+  if (backfilling) return; const todo = prodList().filter((p) => !p.feat && p.photo).slice(0, 25); if (!todo.length) return;
+  backfilling = true;
+  try {
+    for (const p of todo) {
+      let blob = null; try { blob = p.photo.dataUrl ? await dataBlob(p.photo.dataUrl) : await thumbBlob(p.photo.thumb || p.photo.path); } catch (e) {}
+      if (!blob) continue;
+      const bmp = await createImageBitmap(blob), col = analyzeColors(bmp); if (bmp.close) bmp.close();
+      const cur = data().products[p.id]; if (!cur || !col.feat) continue;
+      setRec(p.id, "settings", Object.assign(clone(cur), { feat: col.feat }), { quiet: true });
+      await pause(60);
+    }
+  } finally { backfilling = false; }
 }
 function openProd(id) { const p = data().products[id]; if (!p) return; openModal({ kind: "prod", id, data: Object.assign({ name: "", cat: "", type: "", fam: "szurke", hex: "", shade: "", palette: [], qty: "", price: "", note: "" }, clone(p)) }); if (!num(modal.data.price)) { modal.data.price = ""; drawModal(); } }
 function saveProd() {
@@ -1248,8 +1343,7 @@ function saveCats() {
 function submitModal() { if (!modal) return; if (modal.kind === "prodNew") saveProdBatch(); else if (modal.kind === "prod") saveProd(); else if (modal.kind === "prodCats") saveCats(); }
 async function photoBlobOf(ph) {
   if (!ph) return null; if (ph.dataUrl) return dataBlob(ph.dataUrl);
-  const { data: r, error } = await sb.storage.from("documents").createSignedUrl(ph.thumb || ph.path, 600); if (error) throw error;
-  return (await fetch(r.signedUrl)).blob();
+  const b = await thumbBlob(ph.thumb || ph.path); if (!b) throw new Error("A fotó most nem érhető el (nincs internet és nincs a telefonon tárolva)."); return b;
 }
 async function zoomProd() {
   const ph = modal && modal.data && modal.data.photo; if (!ph) return;
@@ -1283,6 +1377,7 @@ const PA = {
   prodCat: (b) => { ui.prodCat = b.dataset.v; saveUi(); render(true); },
   prodSort: (b) => { ui.prodSort = b.dataset.v; saveUi(); render(true); },
   prodView: (b) => { ui.prodView = b.dataset.v; saveUi(); render(true); },
+  prodLike: (b) => openProd(b.dataset.id),
   prodEdit: (b) => openProd(b.dataset.id),
   prodJump: (b) => { const el = document.getElementById("pj-" + b.dataset.g); if (el) el.scrollIntoView({ behavior: "smooth", block: "start" }); },
   prodZoom: () => zoomProd(),
@@ -1473,7 +1568,7 @@ function vSet() {
    <div class="btns"><button type="button" class="btn" data-action="sample">Mintaadatok betöltése</button><button type="button" class="btn" data-action="clearSample">Mintaadatok törlése</button>
    ${uiConfirm === "wipe" ? '<button type="button" class="btn danger solid" data-action="wipe">Igen, minden rendelés és kiadás törlése</button><button type="button" class="btn" data-action="cancelConfirm">Mégse</button>' : '<button type="button" class="btn danger" data-action="askWipe">Minden adat törlése</button>'}</div>
   </div></div>
-  <p class="note" style="text-align:center">SM home dekor Planner · 2.7</p>
+  <p class="note" style="text-align:center">SM home dekor Planner · 2.8</p>
   </div>`;
 }
 
@@ -1620,14 +1715,29 @@ function submitSheet() {
 
 /* ---------- Dokumentumok ---------- */
 const thumbCache = {};
+/* Bélyegképek: a telefon gyorsítótárából (offline is), ha nincs, a felhőből – és el is tárolja */
+const TCACHE = "smhd-thumbs", tkey = (p) => "/__thumb/" + encodeURIComponent(p), cacheable = (p) => /\/(products|orders|art)\//.test(p);
+async function thumbPut(p, blob) { try { if (!("caches" in window) || !blob) return; const c = await caches.open(TCACHE); await c.put(tkey(p), new Response(blob, { headers: { "Content-Type": blob.type || "image/jpeg" } })); } catch (e) {} }
+async function thumbGet(p) { try { if (!("caches" in window)) return null; const c = await caches.open(TCACHE), r = await c.match(tkey(p)); return r ? await r.blob() : null; } catch (e) { return null; } }
+async function thumbBlob(p) {
+  const b = await thumbGet(p); if (b) return b;
+  if (!sb || !online()) return null;
+  const { data: r, error } = await sb.storage.from("documents").createSignedUrl(p, 600); if (error || !r) return null;
+  const res = await fetch(r.signedUrl); if (!res.ok) return null; const blob = await res.blob(); if (cacheable(p)) thumbPut(p, blob); return blob;
+}
+let thumbBusy = false;
 async function loadThumbs() {
-  if (!sb) return;
   const imgs = [...document.querySelectorAll("img[data-thumb]")]; if (!imgs.length) return;
-  const now = Date.now(), need = [...new Set(imgs.map((i) => i.dataset.thumb).filter((p) => !(thumbCache[p] && thumbCache[p].exp > now)))];
-  if (need.length && online()) {
-    try { const { data: d } = await sb.storage.from("documents").createSignedUrls(need, 3600); (d || []).forEach((x) => { if (x.signedUrl) thumbCache[x.path] = { url: x.signedUrl, exp: now + 3500e3 }; }); } catch (e) {}
+  const now = Date.now(), need = [...new Set(imgs.map((i) => i.dataset.thumb).filter((p) => !(thumbCache[p] && (thumbCache[p].local || thumbCache[p].exp > now))))];
+  await Promise.all(need.map(async (p) => { if (!cacheable(p)) return; const b = await thumbGet(p); if (b) thumbCache[p] = { url: URL.createObjectURL(b), local: true }; }));
+  const rest = need.filter((p) => !thumbCache[p]);
+  if (rest.length && sb && online()) {
+    try {
+      const { data: d } = await sb.storage.from("documents").createSignedUrls(rest, 3600);
+      (d || []).forEach((x) => { if (!x.signedUrl) return; thumbCache[x.path] = { url: x.signedUrl, exp: now + 3500e3 }; if (cacheable(x.path)) fetch(x.signedUrl).then((r) => (r.ok ? r.blob() : null)).then((b) => b && thumbPut(x.path, b)).catch(() => {}); });
+    } catch (e) {}
   }
-  imgs.forEach((img) => { const c = thumbCache[img.dataset.thumb]; if (c) { if (img.src !== c.url) img.src = c.url; img.hidden = false; const ic = img.nextElementSibling; if (ic && ic.tagName.toLowerCase() === "svg") ic.remove(); } });
+  document.querySelectorAll("img[data-thumb]").forEach((img) => { const c = thumbCache[img.dataset.thumb]; if (c) { if (img.src !== c.url) img.src = c.url; img.hidden = false; const ic = img.nextElementSibling; if (ic && (ic.tagName.toLowerCase() === "svg" || ic.classList.contains("noimg"))) ic.remove(); } });
 }
 async function shrinkImage(file) {
   if (!/^image\/(jpeg|png|webp|heic|heif)/.test(file.type) || file.size < 1.5e6) return file;
@@ -2024,7 +2134,7 @@ new MutationObserver(() => { fsPage.update(); fsModal.update(); }).observe(docum
 /* ---------- Indítás ---------- */
 render();
 if (CLOUD) initCloud();
-if ("serviceWorker" in navigator && location.protocol === "https:") {
+if ("serviceWorker" in navigator && (location.protocol === "https:" || location.hostname === "localhost")) {
   window.addEventListener("load", () => { navigator.serviceWorker.register("/sw.js").catch(() => {}); });
 }
 })();

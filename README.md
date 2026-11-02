@@ -88,6 +88,18 @@ Alsó sor: **Főoldal · Naptár · ＋ Új · Árukészlet · Menü**.
   Alapanyagok, Cég adatai, Beállítások, Motiváció, Rajztábla). Minden aloldal tetején
   „‹ Menü” vissza gomb van.
 
+## 2.8 – offline működés, pontosabb felismerés
+
+- **Offline:** a külső könyvtárakat (Supabase, betűtípusok, QR, HEIC-átalakító, termékfelismerő) a
+  telefon eltárolja, így net nélkül is elindul az app. A termékfotók bélyegképei a telefonon is
+  tárolódnak, ezért offline is látszanak a polcon. Ha közben visszajön a net, a szinkron magától indul.
+- **Pontosabb szín:** a kép pixeleit színcsoportokra bontja (k-közép, Lab színtér); háttér az, ami a kép
+  szélét lefedi (sima fal vagy több színű fa asztal is), a többi a termék.
+- **Tanulás a saját termékekből (net nélkül is):** minden fotóból alak-, szín- és textúra-lenyomat készül.
+  Új képnél a leghasonlóbb felvett termék típusát és kategóriáját javasolja („Hasonlít erre: … 87%”).
+  Minél több terméket veszel fel típussal, annál pontosabb. A termék adatlapján a hasonló termékek is látszanak.
+  A régebbi termékek lenyomata a háttérben magától elkészül.
+
 ## 2.7 – gyorsítás, görgetés, táblagép
 
 - A fotók feldolgozása háttérszálon fut (Web Worker), így a felület nem akad meg
