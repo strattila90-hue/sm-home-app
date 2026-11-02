@@ -88,19 +88,27 @@ Alsó sor: **Főoldal · Naptár · ＋ Új · Árukészlet · Menü**.
   Alapanyagok, Cég adatai, Beállítások, Motiváció, Rajztábla). Minden aloldal tetején
   „‹ Menü” vissza gomb van.
 
-## Árukészlet (fényképes)
+## Árukészlet (fényképes, 2.6)
 
-- **Fotó készítése** (kamera) vagy **Galériából** (egyszerre több kép is).
-- Az app a fotóból felismeri a termék fő színét: a háttér színét kiszűri, a kép közepét
-  erősebben veszi figyelembe. Ha téved, a „módosítás” gombbal a fotón talált színek
-  vagy a színcsaládok közül választhatsz.
-- A **kategóriát a felhasználó adja meg** (alapból: Fülbevalók, Táskák, Egyedi termékek).
-  Új kategória a feltöltéskor vagy a „+ Kategóriák” gombbal vehető fel, ott át is nevezhető.
-- Nézetek: **Szín szerint** (színcsoportok szivárvány-sorrendben) vagy **ABC sorrend**
-  (betűnként csoportosítva, a magyar ábécé szerint, Cs, Sz, Zs is külön betű), plusz kereső.
-- A fotók a privát `documents` tárhely `products/` mappájába kerülnek (nagy kép és
-  bélyegkép). Internet nélkül is lehet fotózni: a kép addig a telefonon marad, és a
-  következő szinkronnál magától feltöltődik.
+- **Fotó készítése** (kamera) vagy **Galériából** (egyszerre több kép is, ajánlott max. 5–6).
+- **Polc nézet:** soronként 3–4 termék egymás mellett, fapolcon. Felül színsáv (vagy ABC-ben
+  betűsáv): egy színre koppintva a polc oda ugrik. **Rács nézet:** sűrű fotórács színcsoportonként.
+- **Makramé színadatbázis:** 56 zsinórszín (natúr/ekrü, krém, bézs, terrakotta, rozsda, mustár,
+  okker, zsálya, eukaliptusz, olíva, petrol, púder, mályva, levendula, antracit…) 15 színcsoportban.
+  Az app a fotóról kiszűri a hátteret, és a legközelebbi zsinórszínt választja (Lab színtávolság).
+  A szín a színkörökből egy koppintással javítható.
+- **Makramé termékadatbázis:** 31 terméktípus (falikárpit, növénytartó, lámpabúra, tükörkeret,
+  fülbevaló, karkötő, táska, álomfogó, alátét, ünnepi díszek…). A típusból és a színből automatikus
+  név készül (pl. „Terrakotta falikárpit”), és a típus alapján kategóriát javasol.
+- **Okos termékfelismerés (opcionális):** bekapcsolva a fotóról felismeri a terméktípust (CLIP modell,
+  a telefonon fut, egyszeri kb. 150 MB letöltés, Wi-Fi ajánlott). Beállítások → Árukészlet.
+- **Hibamagyarázat:** ha egy fotó nem tölthető be vagy fel, az app megírja, mi a hiba és mit tehetsz
+  (HEIC formátum, sérült vagy felhőben lévő kép, kevés memória, nincs net, lejárt belépés,
+  hiányzó Supabase jogosultság vagy tárhely, méretkorlát). Az utolsó 30 hiba a
+  **Beállítások → Árukészlet → Hibanapló** alatt visszanézhető.
+- HEIC képeket az app megpróbálja automatikusan JPEG-re alakítani.
+- Internet nélkül is lehet fotózni: a kép a telefonon marad, és a következő szinkronnál
+  feltöltődik (vagy „Feltöltés most” gomb).
 - **Adatbázis-módosítás nem kell:** a meglévő `schema.sql` változatlanul jó.
 
 ## Hogyan működik a NAV kimutatás
