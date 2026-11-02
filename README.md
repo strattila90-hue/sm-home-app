@@ -88,6 +88,17 @@ Alsó sor: **Főoldal · Naptár · ＋ Új · Árukészlet · Menü**.
   Alapanyagok, Cég adatai, Beállítások, Motiváció, Rajztábla). Minden aloldal tetején
   „‹ Menü” vissza gomb van.
 
+## 2.9 – több tétel egy rendelésen belül
+
+- Egy rendelésben tetszőleges számú tétel lehet, mindegyiknek saját neve, típusa, darabszáma,
+  egységára, anyagköltsége és munkaideje (darabonként). A tétel sorában az összeg, alul a rendelés végösszege.
+- Tétel hozzáadása: a terméktípus gombjával (az alapárakat a Beállításokból tölti), üres tételként,
+  vagy **az árukészletből** (fotóval, árral). Árukészletből választott tételnél a raktári darabszám
+  mentéskor csökken, szerkesztéskor igazodik, a rendelés törlésekor visszaíródik.
+- A bevétel, haszon, NAV kimutatás, CSV és az éves terméktípus-statisztika a tételekből számol.
+  A NAV kimutatásban a megnevezés a tételeket és darabszámaikat sorolja fel.
+- A régi (egytételes) rendelések megnyitáskor egy tételként jelennek meg, az összegük nem változik.
+
 ## 2.8 – offline működés, pontosabb felismerés
 
 - **Offline:** a külső könyvtárakat (Supabase, betűtípusok, QR, HEIC-átalakító, termékfelismerő) a

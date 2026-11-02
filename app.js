@@ -260,7 +260,7 @@ const MORE = [
   ["Vállalkozás", [["biz", "Cég adatai", "Adószám, hivatalos dokumentumok"], ["set", "Beállítások", "Termékárak, mentés, telepítés"]]],
   ["Magamnak", [["motiv", "Motiváció", "Miért csinálom, céljaim"], ["draw", "Rajztábla", "Vázlatok, kikapcsolódás"]]]
 ];
-const SHELL_OK = (document.querySelector('meta[name="smhd-shell"]') || {}).content === "2.8";
+const SHELL_OK = (document.querySelector('meta[name="smhd-shell"]') || {}).content === "2.9";
 
 /* ---------- Állapotjelző ---------- */
 function paintStatus() {
@@ -416,7 +416,10 @@ function vYear() {
   const Y = ui.year, ys = stats(String(Y)), months = [];
   for (let i = 1; i <= 12; i++) months.push(Object.assign({ ym: Y + "-" + pad(i), i }, stats(Y + "-" + pad(i))));
   const best = months.filter((x) => x.n).sort((a, b) => b.profit - a.profit)[0];
-  const types = {}; ys.os.forEach((o) => { const k = o.type || "Egyéb"; const t = types[k] || (types[k] = { q: 0, rev: 0, pr: 0, h: 0 }); t.q += num(o.qty) || 1; t.rev += num(o.price); t.pr += num(o.price) - num(o.cost); t.h += num(o.hours); });
+  const types = {}; ys.os.forEach((o) => {
+    const ls = Array.isArray(o.items) && o.items.length ? o.items : [legacyLine(o)];
+    ls.forEach((l) => { const k = l.type || "Egyéb", q = num(l.qty) || 1, t = types[k] || (types[k] = { q: 0, rev: 0, pr: 0, h: 0 }); t.q += q; t.rev += q * num(l.unit); t.pr += q * (num(l.unit) - num(l.ucost)); t.h += q * num(l.uhours); });
+  });
   const te = Object.entries(types).sort((a, b) => b[1].rev - a[1].rev);
   return `<div class="navrow" style="margin-top:22px"><button type="button" class="iconbtn" data-action="year" data-k="-1" aria-label="Előző év">${I.prev}</button><h2>${Y} összesen</h2><button type="button" class="iconbtn" data-action="year" data-k="1" aria-label="Következő év">${I.next}</button></div>
   <div class="kpis">${kpi("Éves bevétel", huf(ys.rev), ys.n + " rendelés")}${kpi("Összes költség", huf(ys.cost), "")}${kpi("Éves haszon", huf(ys.profit), num(data().settings.taxPct) > 0 ? "tartalék után " + huf(ys.net) : "")}${kpi("Munkaóra", hrs(ys.h), "")}${kpi("Órabér", ys.hourly == null ? "–" : huf(ys.hourly), "éves átlag")}${kpi("Legjobb hónap", best ? MON[best.i - 1] : "–", best ? huf(best.profit) : "")}</div>
@@ -448,7 +451,7 @@ function orderCard(o) {
   const p = num(o.price) - num(o.cost), st = orderState(o);
   return `<div class="order-wrap"><button type="button" class="order st-${st}" data-action="editOrder" data-id="${esc(o.id)}">
    <span class="oname">${photoImg(o.photo, "othumb")}<span class="name">${esc(o.product || o.type || "Rendelés")}</span></span><span class="price num">${huf(o.price)}</span>
-   <span class="meta"><span class="pill st-${st}">${esc(STATE[st].label)}</span>${o.type ? `<span class="chip-type">${esc(o.type)}</span>` : ""}<span>${esc(o.status)}</span><span class="num">· ${num(o.qty) || 1} db · ${hrs(o.hours)}</span>${o.deadline ? `<span class="num">· határidő ${esc(dayLabel(o.deadline))}</span>` : ""}${depositOf(o) && !o.paid ? `<span class="pill dep num">előleg ${huf(depositOf(o))} · hátralék ${huf(dueOf(o))}</span>` : ""}${o.customer ? `<span>· ${esc(o.customer)}</span>` : ""}${o.sample ? "<span>· minta</span>" : ""}</span>
+   <span class="meta"><span class="pill st-${st}">${esc(STATE[st].label)}</span>${o.type ? `<span class="chip-type">${esc(o.type)}</span>` : ""}<span>${esc(o.status)}</span><span class="num">· ${Array.isArray(o.items) && o.items.length > 1 ? o.items.length + " tétel, " : ""}${fmtQty(num(o.qty) || 1)} db · ${hrs(o.hours)}</span>${o.deadline ? `<span class="num">· határidő ${esc(dayLabel(o.deadline))}</span>` : ""}${depositOf(o) && !o.paid ? `<span class="pill dep num">előleg ${huf(depositOf(o))} · hátralék ${huf(dueOf(o))}</span>` : ""}${o.customer ? `<span>· ${esc(o.customer)}</span>` : ""}${o.sample ? "<span>· minta</span>" : ""}</span>
    <span class="profit num ${p < 0 ? "neg" : ""}">${p >= 0 ? "+" : ""}${huf(p)}</span></button><button type="button" class="ox" data-action="delOrder" data-id="${esc(o.id)}" aria-label="${esc(o.product || "Rendelés")} törlése">${I.x}</button></div>`;
 }
 const depositOf = (o) => (o.depositPaid ? Math.max(0, num(o.deposit)) : 0);
@@ -1108,6 +1111,12 @@ const MV = {
      <p class="note" id="mErr" hidden style="color:var(--danger);margin:0"></p>
      <div class="btns" style="justify-content:flex-end"><button class="btn primary" type="submit">Mentés</button></div></form>`;
   },
+  pickProd: () => {
+    const q = String(modal.q || "").toLocaleLowerCase("hu-HU"), list = prodList().filter((p) => !q || [p.name, p.cat, shadeName(p), typeName(p.type)].join(" ").toLocaleLowerCase("hu-HU").includes(q)).sort(byColor);
+    return `<div class="sheet full wide" role="dialog" aria-modal="true">${mhead("Tétel az árukészletből", "Koppints a termékre – többször koppintva a darabszám nő")}
+     <div class="searchbox">${I.search}<input class="in-ctl" id="pp-q" type="search" placeholder="Keresés" value="${esc(modal.q || "")}" autocomplete="off"></div>
+     <div class="pgrid tight pick" style="--cols:${Math.max(3, Math.min(6, Math.floor(Math.min(window.innerWidth, 1100) / 130)))}">${list.map((p) => `<button type="button" class="pcard" data-action="pickProdForOrder" data-id="${esc(p.id)}"><span class="pph">${prodImg(p.photo)}${p.qty !== "" && p.qty != null ? `<span class="badge num ${num(p.qty) <= 0 ? "zero" : ""}">${fmtQty(p.qty)}</span>` : ""}</span><span class="pinfo"><b>${esc(p.name)}</b><span class="pmeta">${num(p.price) ? huf(p.price) : esc(shadeName(p))}</span></span></button>`).join("") || '<p class="note">Nincs találat.</p>'}</div></div>`;
+  },
   errs: () => {
     const l = errLog();
     return `<div class="sheet full" role="dialog" aria-modal="true">${mhead("Hibanapló", "A fotókkal és a feltöltéssel kapcsolatos legutóbbi hibák, magyarázattal")}
@@ -1362,6 +1371,7 @@ function prodSettingsCard() {
 document.getElementById("prodCam").addEventListener("change", (e) => { const f = [...(e.target.files || [])]; e.target.value = ""; if (f.length) addProdFiles(f); });
 document.getElementById("prodGal").addEventListener("change", (e) => { const f = [...(e.target.files || [])]; e.target.value = ""; if (f.length) addProdFiles(f); });
 document.addEventListener("input", (e) => {
+  if (e.target.id === "pp-q" && modal && modal.kind === "pickProd") { modal.q = e.target.value; drawModal(); return; }
   if (e.target.id !== "prodQ") return;
   ui.prodQ = e.target.value; const g = document.getElementById("prodGrid"); if (g) { g.innerHTML = prodGrid(); loadThumbs(); }
 });
@@ -1460,7 +1470,7 @@ function vNav() {
    <h2>Bevételi nyilvántartás</h2><div class="note">${esc(per.label)} · ${fullDate(per.from)} – ${fullDate(per.to.replace(/-31$/, "-" + pad(new Date(+per.to.slice(0, 4), +per.to.slice(5, 7), 0).getDate())))}</div>
    <div class="rep-sum num"><div><small>Tételek</small><b>${rows.length} db</b></div><div><small>${afa ? "Nettó bevétel" : "Bevétel"}</small><b>${huf(tot.net)}</b></div><div><small>${p.kind === "y" ? "Éves összesen" : p.year + " eddig"}</small><b>${huf(ytdSum)}</b></div></div>
    ${rows.length ? `<div class="table-wrap"><table class="num"><thead><tr><th class="l">Ssz.</th><th class="l">Dátum</th><th class="l">Bizonylat</th><th class="l">Megnevezés</th><th class="l">Fiz. mód</th>${afa ? "<th>Nettó</th><th>ÁFA</th><th>Bruttó</th>" : "<th>Bevétel (Ft)</th>"}</tr></thead>
-   <tbody>${rows.map((r) => `<tr><td class="l">${r.no}.</td><td class="l">${fullDate(r.rd)}</td><td class="l ${r.invoiceNo ? "" : "miss"}">${r.invoiceNo ? esc(r.invoiceNo) : "hiányzik"}</td><td class="l tw">${esc(r.product || r.type)}${num(r.qty) > 1 ? ` (${num(r.qty)} db)` : ""}${r.part === "dep" ? ' <span class="pill dep">előleg</span>' : r.part === "rest" ? ' <span class="pill">hátralék</span>' : ""}${r.customer ? `<br><span class="note">${esc(r.customer)}</span>` : ""}</td><td class="l">${esc(r.payMethod || "—")}</td>${afa ? `<td>${huf(r.net)}</td><td>${huf(r.vat)}</td><td>${huf(r.gross)}</td>` : `<td>${huf(r.net)}</td>`}</tr>`).join("")}</tbody>
+   <tbody>${rows.map((r) => `<tr><td class="l">${r.no}.</td><td class="l">${fullDate(r.rd)}</td><td class="l ${r.invoiceNo ? "" : "miss"}">${r.invoiceNo ? esc(r.invoiceNo) : "hiányzik"}</td><td class="l tw">${esc(r.product || r.type)}${num(r.qty) > 1 && !(Array.isArray(r.items) && r.items.length > 1) ? ` (${num(r.qty)} db)` : ""}${r.part === "dep" ? ' <span class="pill dep">előleg</span>' : r.part === "rest" ? ' <span class="pill">hátralék</span>' : ""}${r.customer ? `<br><span class="note">${esc(r.customer)}</span>` : ""}</td><td class="l">${esc(r.payMethod || "—")}</td>${afa ? `<td>${huf(r.net)}</td><td>${huf(r.vat)}</td><td>${huf(r.gross)}</td>` : `<td>${huf(r.net)}</td>`}</tr>`).join("")}</tbody>
    <tfoot><tr><td class="l" colspan="5">Összesen</td>${afa ? `<td>${huf(tot.net)}</td><td>${huf(tot.vat)}</td><td>${huf(tot.gross)}</td>` : `<td>${huf(tot.net)}</td>`}</tr></tfoot></table></div>` : '<p class="note">Ebben az időszakban nincs lezárt rendelés.</p>'}
    ${p.kind !== "m" && Object.keys(months).length > 1 ? `<div class="section-title" style="margin-top:16px">Havi bontás</div><div class="table-wrap"><table class="num"><tbody>${Object.entries(months).sort().map(([k, v]) => `<tr><td class="l" style="text-transform:capitalize">${esc(monthLabel(k))}</td><td>${huf(v)}</td></tr>`).join("")}</tbody></table></div>` : ""}
    <div class="rep-foot"><span>A kimutatás a ténylegesen befolyt összegeket tartalmazza időrendben: az előleget a befizetés napján, a hátralékot a kifizetéskor${afa ? ", az ÁFA a bruttó összegből 27%-kal visszaszámolva" : ", áfa nélküli összegben"}.</span><span>Készült az SM home dekor Planner alkalmazással. A bevallást nem helyettesíti.</span></div>
@@ -1568,16 +1578,40 @@ function vSet() {
    <div class="btns"><button type="button" class="btn" data-action="sample">Mintaadatok betöltése</button><button type="button" class="btn" data-action="clearSample">Mintaadatok törlése</button>
    ${uiConfirm === "wipe" ? '<button type="button" class="btn danger solid" data-action="wipe">Igen, minden rendelés és kiadás törlése</button><button type="button" class="btn" data-action="cancelConfirm">Mégse</button>' : '<button type="button" class="btn danger" data-action="askWipe">Minden adat törlése</button>'}</div>
   </div></div>
-  <p class="note" style="text-align:center">SM home dekor Planner · 2.8</p>
+  <p class="note" style="text-align:center">SM home dekor Planner · 2.9</p>
   </div>`;
 }
 
 /* ---------- Lap (rendelés / kiadás) ---------- */
 let sheet = null, sheetConfirm = false, lastAnimSheet = null;
+/* ---------- Rendelés tételei: több termék, darab és egységár egy rendelésen belül ---------- */
+const r2n = (v) => Math.round(num(v) * 100) / 100;
+const emptyLine = () => ({ id: uid("l"), product: "", type: "", qty: 1, unit: "", ucost: "", uhours: "", prodId: "" });
+function legacyLine(o) { const q = num(o.qty) || 1; return { id: uid("l"), product: o.product || "", type: o.type || "", qty: q, unit: r2n(num(o.price) / q) || "", ucost: r2n(num(o.cost) / q) || "", uhours: r2n(num(o.hours) / q) || "", prodId: "" }; }
+const lineTotal = (l) => (num(l.qty) || 0) * num(l.unit);
+function orderTotals(d) {
+  const ls = d.items || [];
+  return { n: ls.length, qty: ls.reduce((a, l) => a + (num(l.qty) || 0), 0), price: Math.round(ls.reduce((a, l) => a + lineTotal(l), 0)), cost: Math.round(ls.reduce((a, l) => a + (num(l.qty) || 0) * num(l.ucost), 0)), hours: Math.round(ls.reduce((a, l) => a + (num(l.qty) || 0) * num(l.uhours), 0) * 100) / 100 };
+}
+function linesSummary(ls) {
+  const named = ls.map((l) => ({ n: String(l.product || l.type || "").trim(), q: num(l.qty) || 1 })).filter((x) => x.n);
+  if (named.length <= 1) return named.length ? named[0].n : "";
+  return named.map((x) => (x.q > 1 ? `${x.n} (${fmtQty(x.q)} db)` : x.n)).join(", ");
+}
+/* Árukészletből választott tételek: a raktári darabszám a változással arányosan módosul */
+function adjustStock(oldItems, newItems) {
+  const delta = {};
+  (oldItems || []).forEach((l) => { if (l.prodId) delta[l.prodId] = (delta[l.prodId] || 0) + (num(l.qty) || 0); });
+  (newItems || []).forEach((l) => { if (l.prodId) delta[l.prodId] = (delta[l.prodId] || 0) - (num(l.qty) || 0); });
+  let n = 0;
+  Object.entries(delta).forEach(([id, d]) => { if (!d) return; const p = data().products[id]; if (!p || p.qty === "" || p.qty == null) return; setRec(id, "settings", Object.assign(clone(p), { qty: Math.max(0, num(p.qty) + d) }), { quiet: true }); n++; });
+  return n;
+}
 function orderSheet(id, date) {
   const base = { date: date || ui.day, deadline: "", product: "", type: "", qty: 1, cost: "", price: "", hours: "", customer: "", channel: "", status: STATUSES[0], paid: false, depositPaid: false, deposit: "", depositDate: "", depositMethod: "", depositInvoice: "", note: "", invoiceNo: "", payMethod: "", payDate: "", photo: null };
   const d = Object.assign(base, id ? clone(data().orders[id]) : {});
-  return { kind: "order", id: id || null, newId: id || uid("r"), data: d, origPhoto: d.photo && d.photo.path ? d.photo.path : null, uploads: [] };
+  if (!Array.isArray(d.items) || !d.items.length) d.items = id && (d.product || d.type || num(d.price)) ? [legacyLine(d)] : [emptyLine()];
+  return { kind: "order", origItems: id ? clone(d.items) : [], id: id || null, newId: id || uid("r"), data: d, origPhoto: d.photo && d.photo.path ? d.photo.path : null, uploads: [] };
 }
 function openOrder(id) { stashDraft(); sheet = orderSheet(id); sheetConfirm = false; drawSheet(); }
 let draftNew = null;
@@ -1602,15 +1636,20 @@ function drawSheet() {
   const opts = (arr, v, blank) => (blank ? `<option value="">${blank}</option>` : "") + [...new Set([...arr, ...(v && !arr.includes(v) ? [v] : [])])].map((c) => `<option ${c === v ? "selected" : ""}>${esc(c)}</option>`).join("");
   let body;
   if (sheet.kind === "order") {
-    const names = [...new Set(Object.values(data().orders).map((o) => o.product).filter(Boolean))].slice(0, 80);
+    const names = [...new Set([...Object.values(data().orders).flatMap((o) => (Array.isArray(o.items) ? o.items.map((l) => l.product) : [o.product])), ...prodList().map((p) => p.name)].filter(Boolean))].slice(0, 150);
     const inline = !!sheet.inline;
-    body = `<div class="field"><label>Mit készítesz?</label><div class="chips type-chips">${s.types.map((t) => `<button type="button" class="tchip ${d.type === t.name ? "on" : ""}" data-action="pickType" data-v="${esc(t.name)}">${esc(t.name)}</button>`).join("")}</div></div>
-     <div class="field"><label for="f-product">Termék megnevezése</label><input class="in-ctl" id="f-product" data-f="product" list="dl-prod" value="${esc(d.product)}" placeholder="pl. Bohém falikárpit 60 cm"><datalist id="dl-prod">${names.map((n) => `<option value="${esc(n)}">`).join("")}</datalist></div>
-     <div class="grid3"><div class="field"><label for="f-qty">Darab</label><input class="in-ctl num" id="f-qty" inputmode="numeric" data-f="qty" value="${esc(d.qty)}"></div>
-     <div class="field"><label for="f-price">Eladási ár (Ft)</label><input class="in-ctl num" id="f-price" inputmode="numeric" data-f="price" value="${esc(d.price)}" placeholder="összesen"></div>
-     <div class="field"><label for="f-cost">Anyagköltség (Ft)</label><input class="in-ctl num" id="f-cost" inputmode="numeric" data-f="cost" value="${esc(d.cost)}" placeholder="nettó"></div></div>
-     <div class="grid2"><div class="field"><label for="f-hours">Munkaidő (óra)</label><input class="in-ctl num" id="f-hours" inputmode="decimal" data-f="hours" value="${esc(d.hours)}" placeholder="pl. 3,5"></div>
-     <div class="field"><label for="f-deadline">Határidő</label><input class="in-ctl" type="date" id="f-deadline" data-f="deadline" value="${esc(d.deadline || "")}"></div></div>
+    const tot = orderTotals(d), typeOpts2 = (v) => `<option value="">Típus…</option>` + s.types.map((t) => `<option ${t.name === v ? "selected" : ""}>${esc(t.name)}</option>`).join("") + (v && !s.types.some((t) => t.name === v) ? `<option selected>${esc(v)}</option>` : "");
+    body = `<div class="field"><label>Tételek <span class="note">(${tot.n} tétel · ${fmtQty(tot.qty)} db)</span></label>
+     <div class="olines">${d.items.map((l, i) => { const pr = l.prodId && data().products[l.prodId]; return `<div class="oline" id="ol-${l.id}">
+      <div class="oline-top"><span class="oline-no num">${i + 1}.</span>${pr ? `<span class="oline-ph">${prodImg(pr.photo)}</span>` : ""}<input class="in-ctl" data-li="${i}" data-lf="product" list="dl-prod" value="${esc(l.product)}" placeholder="Termék neve, pl. Bohém falikárpit" aria-label="${i + 1}. tétel neve" enterkeyhint="done"><button type="button" class="x" data-action="lineDel" data-i="${i}" aria-label="${i + 1}. tétel törlése">${I.x}</button></div>
+      <div class="oline-row"><select class="in-ctl" data-li="${i}" data-lf="type" aria-label="Típus">${typeOpts2(l.type)}</select>${stepper(l.qty, `data-action="lineStep" data-i="${i}"`)}</div>
+      <div class="oline-row three"><label class="mini">Egységár (Ft)<input class="in-ctl num" data-li="${i}" data-lf="unit" inputmode="numeric" enterkeyhint="done" value="${esc(l.unit)}" placeholder="0"></label><label class="mini">Anyag / db<input class="in-ctl num" data-li="${i}" data-lf="ucost" inputmode="numeric" enterkeyhint="done" value="${esc(l.ucost)}" placeholder="Ft"></label><label class="mini">Óra / db<input class="in-ctl num" data-li="${i}" data-lf="uhours" inputmode="decimal" enterkeyhint="done" value="${esc(l.uhours)}" placeholder="ó"></label></div>
+      <div class="oline-sum">${pr ? `<span class="note">Árukészletből · raktáron ${pr.qty === "" || pr.qty == null ? "–" : fmtQty(pr.qty)} db</span>` : "<span></span>"}<span>Összesen: <b class="num" id="lt-${l.id}">${huf(lineTotal(l))}</b></span></div></div>`; }).join("")}</div>
+     <div class="note" style="margin:8px 0 4px">Tétel hozzáadása – koppints a termékre:</div>
+     <div class="chips type-chips">${s.types.map((t) => `<button type="button" class="tchip" data-action="pickType" data-v="${esc(t.name)}">+ ${esc(t.name)}</button>`).join("")}</div>
+     <div class="btns" style="margin-top:8px"><button type="button" class="btn small" data-action="lineAdd">+ Üres tétel</button><button type="button" class="btn small" data-action="linePick">${I.prod.replace("<svg", '<svg width="16" height="16"')} Árukészletből</button></div>
+     <div class="ototal"><span>Rendelés összesen</span><b class="num" id="o-total">${huf(tot.price)}</b></div><datalist id="dl-prod">${names.map((n) => `<option value="${esc(n)}">`).join("")}</datalist></div>
+     <div class="field"><label for="f-deadline">Határidő</label><input class="in-ctl" type="date" id="f-deadline" data-f="deadline" value="${esc(d.deadline || "")}"></div>
      <div class="field"><label for="f-customer">Vevő (nem kötelező)</label><input class="in-ctl" id="f-customer" data-f="customer" value="${esc(d.customer)}"></div>
      <div class="fieldset dep-box"><label class="switch"><input type="checkbox" id="f-depositPaid" data-f="depositPaid" ${d.depositPaid ? "checked" : ""}><span><b>Előleget fizetett</b></span></label>
       ${d.depositPaid ? `<div class="grid2"><div class="field"><label for="f-deposit">Előleg összege (Ft)</label><input class="in-ctl num" id="f-deposit" inputmode="numeric" data-f="deposit" value="${esc(d.deposit || "")}" placeholder="pl. 5000"></div>
@@ -1659,40 +1698,49 @@ function drawSheet() {
    ${sheet.inline ? "" : `<div class="sheet-head"><h3 id="sh-t">${sheet.kind === "order" ? (sheet.id ? "Rendelés szerkesztése" : "Új rendelés") : sheet.kind === "stock" ? (sheet.id ? "Készlettétel" : "Új készlettétel") : (sheet.id ? "Kiadás szerkesztése" : "Új kiadás")}</h3><button type="button" class="iconbtn" data-action="closeSheet" aria-label="Bezárás">${I.x}</button></div>`}
    ${body}<p class="note" id="formErr" hidden style="color:var(--danger);margin:0"></p>
    <div class="btns" style="justify-content:space-between"><span>${sheet.inline ? '<button type="button" class="btn" data-action="resetDraft">Ürítés</button>' : delBtn}</span><button class="btn primary ${sheet.inline ? "big" : ""}" type="submit" ${sheet.uploading ? "disabled" : ""}>${sheet.inline ? "Rendelés mentése" : "Mentés"}</button></div></form>`;
+  const oldSh = sheet.inline ? null : box.querySelector(".sheet"), keepTop = oldSh && oldSh.dataset.sid === String(sheet.newId || sheet.id || sheet.kind) ? oldSh.scrollTop : 0;
   box.innerHTML = sheet.inline ? form : `<div class="overlay" data-action="closeSheetBg">${form}</div>`;
+  if (!sheet.inline) { const sh2 = box.querySelector(".sheet"); if (sh2) { sh2.dataset.sid = String(sheet.newId || sheet.id || sheet.kind); sh2.scrollTop = keepTop; } }
   if (!sheet.inline && sheet !== lastAnimSheet) { lastAnimSheet = sheet; const f0 = box.querySelector(".sheet"); if (f0) f0.classList.add("anim"); }
   updPreview(); loadThumbs();
 }
 function updPreview() {
   const el = document.getElementById("preview"); if (!el || !sheet) return; const d = sheet.data;
-  const p = num(d.price) - num(d.cost), h = num(d.hours);
-  el.innerHTML = `<span>Haszon: <b>${huf(p)}</b></span><span>Órabér: <b>${h > 0 ? huf(p / h) : "–"}</b></span>${num(d.qty) > 1 ? `<span>Darabonként: <b>${huf(num(d.price) / num(d.qty))}</b></span>` : ""}${d.depositPaid && num(d.deposit) > 0 ? `<span>Hátralék: <b>${huf(Math.max(0, num(d.price) - num(d.deposit)))}</b></span>` : ""}`;
+  const t = sheet.kind === "order" && d.items ? orderTotals(d) : { price: num(d.price), cost: num(d.cost), hours: num(d.hours), qty: num(d.qty) };
+  const p = t.price - t.cost, h = t.hours;
+  el.innerHTML = `<span>Bevétel: <b>${huf(t.price)}</b></span><span>Anyag: <b>${huf(t.cost)}</b></span><span>Haszon: <b>${huf(p)}</b></span><span>Órabér: <b>${h > 0 ? huf(p / h) : "–"}</b></span>${d.depositPaid && num(d.deposit) > 0 ? `<span>Hátralék: <b>${huf(Math.max(0, t.price - num(d.deposit)))}</b></span>` : ""}`;
+  const ot = document.getElementById("o-total"); if (ot) ot.textContent = huf(t.price);
 }
 function setField(f, v) { sheet.data[f] = v; const el = document.getElementById("f-" + f); if (el) el.value = v; }
-function applyType() {
-  const d = sheet.data, t = data().settings.types.find((x) => x.name === d.type); if (!t) return;
-  const q = num(d.qty) || 1;
-  ["price", "cost", "hours"].forEach((k) => { if (num(t[k]) > 0) setField(k, String(Math.round(num(t[k]) * q * 100) / 100)); });
-  if (!d.product) setField("product", t.name);
+function applyTypeLine(l) {
+  const t = data().settings.types.find((x) => x.name === l.type); if (!t) return;
+  if (num(t.price) > 0 && !num(l.unit)) l.unit = num(t.price);
+  if (num(t.cost) > 0 && !num(l.ucost)) l.ucost = num(t.cost);
+  if (num(t.hours) > 0 && !num(l.uhours)) l.uhours = num(t.hours);
+  if (!l.product) l.product = t.name;
 }
 function submitSheet() {
   const d = sheet.data, err = document.getElementById("formErr");
   const fail = (m) => { err.textContent = m; err.hidden = false; err.scrollIntoView({ block: "nearest" }); };
   if (sheet.kind !== "stock" && !/^\d{4}-\d{2}-\d{2}$/.test(d.date || "")) return fail("Adj meg egy dátumot.");
   if (sheet.kind === "order") {
-    if (!d.product && !d.type) return fail("Adj meg terméknevet vagy típust.");
+    const lines = (d.items || []).filter((l) => String(l.product || "").trim() || l.type || num(l.unit)).map((l) => ({ id: l.id || uid("l"), product: String(l.product || "").trim() || l.type || "Termék", type: l.type || "", qty: num(l.qty) || 1, unit: num(l.unit), ucost: num(l.ucost), uhours: num(l.uhours), prodId: l.prodId || "" }));
+    if (!lines.length) return fail("Adj hozzá legalább egy tételt (termék neve vagy típusa).");
+    const T = orderTotals({ items: lines });
     if (d.paid && !d.payDate) d.payDate = TODAY;
     if (d.depositPaid && !(num(d.deposit) > 0)) return fail("Add meg az előleg összegét, vagy vedd ki a pipát.");
-    if (d.depositPaid && num(d.price) > 0 && num(d.deposit) > num(d.price)) return fail("Az előleg nem lehet több az eladási árnál.");
+    if (d.depositPaid && T.price > 0 && num(d.deposit) > T.price) return fail("Az előleg nem lehet több a rendelés végösszegénél.");
     const dep = !!d.depositPaid && num(d.deposit) > 0;
-    const o = { date: d.date, deadline: d.deadline || "", paid: !!d.paid, depositPaid: dep, deposit: dep ? num(d.deposit) : 0, depositDate: dep ? (d.depositDate || TODAY) : "", depositMethod: dep ? (d.depositMethod || "") : "", depositInvoice: dep ? String(d.depositInvoice || "").trim() : "", photo: d.photo || null, product: String(d.product || "").trim(), type: d.type || "", qty: num(d.qty) || 1, cost: num(d.cost), price: num(d.price), hours: num(d.hours), customer: String(d.customer || "").trim(), channel: d.channel || "", status: d.status || STATUSES[0], note: String(d.note || "").trim(), invoiceNo: String(d.invoiceNo || "").trim(), payMethod: d.payMethod || "", payDate: d.payDate || "", created: d.created || Date.now() };
+    const o = { date: d.date, deadline: d.deadline || "", paid: !!d.paid, depositPaid: dep, deposit: dep ? num(d.deposit) : 0, depositDate: dep ? (d.depositDate || TODAY) : "", depositMethod: dep ? (d.depositMethod || "") : "", depositInvoice: dep ? String(d.depositInvoice || "").trim() : "", photo: d.photo || null, items: lines, product: linesSummary(lines), type: (lines.slice().sort((a, b) => lineTotal(b) - lineTotal(a))[0] || {}).type || "", qty: T.qty, cost: T.cost, price: T.price, hours: T.hours, customer: String(d.customer || "").trim(), channel: d.channel || "", status: d.status || STATUSES[0], note: String(d.note || "").trim(), invoiceNo: String(d.invoiceNo || "").trim(), payMethod: d.payMethod || "", payDate: d.payDate || "", created: d.created || Date.now() };
     if (d.sample) o.sample = true;
     const id = sheet.newId, keep = o.photo && o.photo.path;
     dropPhotos([...sheet.uploads, sheet.origPhoto].filter((x) => x && x !== keep));
     const wasInline = !!sheet.inline;
     ui.day = ui.calBy === "deadline" && o.deadline ? o.deadline : o.date; ui.month = ymOf(ui.day);
+    const stockN = adjustStock(sheet.origItems, lines);
     sheet = wasInline ? newDraft() : null; draftNew = null; if (!wasInline) drawSheet();
     setRec(id, "order", o); haptic("save");
+    if (stockN) setTimeout(() => toast(`Rendelés elmentve · árukészlet frissítve (${stockN} termék)`), 50);
     if (wasInline) { window.scrollTo({ top: 0, behavior: "smooth" }); toast("Rendelés elmentve", "Megnézem", () => A.goDay({ dataset: { d: ui.day } })); }
     else toast("Rendelés elmentve");
   } else if (sheet.kind === "stock") {
@@ -1908,7 +1956,27 @@ const A = {
     if (!draftNew || (!draftNew.data.product && !draftNew.data.type)) draftNew = newDraft(date); else draftNew.data.date = date;
     ui.tab = "new"; saveUi(); render(true); window.scrollTo(0, 0);
   },
-  pickType: (b) => { if (!sheet) return; sheet.data.type = sheet.data.type === b.dataset.v ? "" : b.dataset.v; if (sheet.data.type) applyType(); drawSheet(); },
+  pickType: (b) => {
+    if (!sheet || !sheet.data.items) return; const ls = sheet.data.items, last = ls[ls.length - 1];
+    const l = last && !String(last.product || "").trim() && !last.type && !num(last.unit) ? last : (ls.push(emptyLine()), ls[ls.length - 1]);
+    l.type = b.dataset.v; applyTypeLine(l); drawSheet();
+    const el = document.getElementById("ol-" + l.id); if (el) el.scrollIntoView({ block: "nearest", behavior: "smooth" });
+  },
+  lineAdd: () => { if (!sheet || !sheet.data.items) return; const l = emptyLine(); sheet.data.items.push(l); drawSheet(); const el = document.querySelector(`#ol-${l.id} input`); if (el) { el.scrollIntoView({ block: "center", behavior: "smooth" }); el.focus({ preventScroll: true }); } },
+  lineDel: (b) => { if (!sheet || !sheet.data.items) return; sheet.data.items.splice(+b.dataset.i, 1); if (!sheet.data.items.length) sheet.data.items.push(emptyLine()); drawSheet(); },
+  lineStep: (b) => { if (!sheet || !sheet.data.items) return; const l = sheet.data.items[+b.dataset.i]; if (!l) return; l.qty = Math.max(1, (num(l.qty) || 1) + +b.dataset.k); drawSheet(); },
+  linePick: () => { if (!prodList().length) { toast("Az árukészlet még üres. Előbb fotózz le termékeket az Árukészlet fülön."); return; } openModal({ kind: "pickProd", q: "" }); },
+  pickProdForOrder: (b) => {
+    const p = data().products[b.dataset.id]; if (!p || !sheet || !sheet.data.items) return;
+    const ls = sheet.data.items, ex = ls.find((l) => l.prodId === b.dataset.id);
+    if (ex) ex.qty = (num(ex.qty) || 1) + 1;
+    else {
+      const tn = p.type && TYPE[p.type] ? TYPE[p.type].n.toLocaleLowerCase("hu-HU") : "", st = data().settings.types.find((t) => t.name.toLocaleLowerCase("hu-HU") === tn);
+      const last = ls[ls.length - 1], l = last && !String(last.product || "").trim() && !last.type && !num(last.unit) ? last : (ls.push(emptyLine()), ls[ls.length - 1]);
+      Object.assign(l, { product: p.name, type: st ? st.name : "", unit: num(p.price) || "", prodId: b.dataset.id, qty: 1 }); if (st) applyTypeLine(l);
+    }
+    modal = null; drawModal(); drawSheet(); toast(`Hozzáadva: ${p.name}`);
+  },
   resetDraft: () => { if (!sheet || !sheet.inline) return; dropPhotos(sheet.uploads); sheet = newDraft(); drawSheet(); },
   goalAdd: () => { const inp = document.getElementById("goalNew"), v = (inp.value || "").trim(); if (!v) return; const m = clone(data().motiv); m.goals.push({ t: v, done: false }); saveMotiv(m); },
   goalToggle: (b) => { const m = clone(data().motiv); const g = m.goals[+b.dataset.i]; if (g) { g.done = !g.done; saveMotiv(m); if (g.done) haptic("save"); } },
@@ -1930,12 +1998,12 @@ const A = {
   closeSheet: () => closeSheet(),
   closeSheetBg: (b, e) => { if (e.target === b) closeSheet(); },
   askDel: () => { sheetConfirm = true; drawSheet(); },
-  sheetDel: () => { const id = sheet.id; if (sheet.kind === "order") dropPhotos([...sheet.uploads, sheet.origPhoto]); sheet = null; drawSheet(); delRec(id); toast("Törölve"); },
+  sheetDel: () => { const id = sheet.id; if (sheet.kind === "order") { dropPhotos([...sheet.uploads, sheet.origPhoto]); const o = data().orders[id]; if (o) adjustStock(o.items, []); } sheet = null; drawSheet(); delRec(id); toast("Törölve"); },
   delOrder: (b) => {
     const id = b.dataset.id, o = data().orders[id]; if (!o) return;
-    const raw = clone(store.recs[id].data); delRec(id);
+    const raw = clone(store.recs[id].data); adjustStock(raw.items, []); delRec(id);
     let undone = false;
-    toast(`„${o.product || o.type || "Rendelés"}” törölve`, "Visszavonás", () => { undone = true; setRec(id, "order", raw); haptic("tap"); });
+    toast(`„${o.product || o.type || "Rendelés"}” törölve`, "Visszavonás", () => { undone = true; adjustStock([], raw.items); setRec(id, "order", raw); haptic("tap"); });
     setTimeout(() => { if (!undone && o.photo && o.photo.path) dropPhotos([o.photo.path]); }, 7000);
   },
   newStock: () => openStock(),
@@ -2021,12 +2089,19 @@ function saveMotiv(m, quiet) { motDraft = null; clearTimeout(motT); setRec("moti
 document.addEventListener("input", (e) => {
   const t = e.target;
   if (modalInput(t)) return;
+  if (t.dataset.lf !== undefined && sheet && sheet.data.items) {
+    const l = sheet.data.items[+t.dataset.li]; if (!l) return;
+    l[t.dataset.lf] = t.value;
+    const fe = document.getElementById("formErr"); if (fe) fe.hidden = true;
+    if (t.dataset.lf === "type") { applyTypeLine(l); drawSheet(); return; }
+    const lt = document.getElementById("lt-" + l.id); if (lt) lt.textContent = huf(lineTotal(l));
+    updPreview(); return;
+  }
   if (t.dataset.f && sheet) {
     sheet.data[t.dataset.f] = t.type === "checkbox" ? t.checked : t.value;
     const fe = document.getElementById("formErr"); if (fe) fe.hidden = true;
     if (t.dataset.f === "paid" && t.checked && !sheet.data.payDate) setField("payDate", TODAY);
     if (t.dataset.f === "depositPaid") { if (t.checked && !sheet.data.depositDate) sheet.data.depositDate = TODAY; drawSheet(); const el = document.getElementById("f-deposit"); if (el) el.focus(); return; }
-    if (t.dataset.f === "type" || (t.dataset.f === "qty" && sheet.data.type && !sheet.id)) applyType();
     updPreview(); return;
   }
   if (t.id === "dayInput") { if (t.value) { ui.day = t.value; ui.month = ymOf(ui.day); ui.year = +ui.day.slice(0, 4); t.blur(); render(true); } return; }
